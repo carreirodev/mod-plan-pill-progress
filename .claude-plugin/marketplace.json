@@ -1,11 +1,11 @@
 {
-  "name": "zycck-mods",
+  "name": "plan-pill-progress",
   "owner": {
-    "name": "Kirill Serditov",
-    "url": "https://github.com/zycck"
+    "name": "carreirodev",
+    "url": "https://github.com/carreirodev"
   },
   "metadata": {
-    "description": "Claude Code mods by zycck"
+    "description": "plan-progress: live plan progress bars above the Claude Code prompt"
   },
   "plugins": [
     {

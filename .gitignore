@@ -5,3 +5,6 @@ plugins/plan-progress/tests/look.html
 plugins/plan-progress/tests/*.results.json
 # session files Claude Code plugins leave in any folder (autoharness locks)
 .claude/
+
+# the step list of a task in progress, kept local
+tasks.md

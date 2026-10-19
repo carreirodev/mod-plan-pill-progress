@@ -1581,6 +1581,11 @@ function trackCells(p: Plan, W: number, t: number): string {
   // the separator in the text's own colour: every cell of the pill reads at AA
   if (tail) at += g.text(at, 0, tail, white, pack(color))
   if (count) g.text(at + 1, 0, count, white, pack(color))
+  // round ends where the terminal can draw them (hasRoundEnds), in the cell of room the text leaves at each side
+  if (hasRoundEnds()) {
+    g.set(kx, 0, '\uE0B6', pack(color), pack(under(kx)))
+    g.set(kx + kw - 1, 0, '\uE0B4', pack(color), pack(under(kx + kw - 1)))
+  }
   return g.encode()
 }
 
@@ -1769,8 +1774,18 @@ async function readTint($: EngineInterface, now: number) {
   if (!omarchy) await probeAppearance($, now)
 }
 
-// the first terminal draw of the module's life waits for the appearance: drawn on a guess, a light terminal would show
-// a dark bar until the second timer repainted it
+// the pill's round ends are Powerline's half circles (U+E0B6, U+E0B4): Ghostty, kitty and WezTerm draw them
+// themselves, and a Nerd Font carries them, as Omarchy's default font is. Anywhere else the font may not have them and
+// a box would stand at each end, so the pill keeps its square ones. The terminal is named once, by what it sets
+let isRoundTerm = false
+async function readTerm($: EngineInterface) {
+  const [program, term, kitty] = await Promise.all([$.env.get('TERM_PROGRAM'), $.env.get('TERM'), $.env.get('KITTY_WINDOW_ID')])
+  isRoundTerm = /^(ghostty|wezterm)$/i.test(program ?? '') || /^xterm-(ghostty|kitty)$/.test(term ?? '') || !!kitty
+}
+const hasRoundEnds = () => isRoundTerm || omarchy !== null
+
+// the first terminal draw of the module's life waits for the appearance and the terminal's name: drawn on a guess, a
+// light terminal would show a dark bar until the second timer repainted it
 let firstTint: Promise<void> | null = null
 
 // reads the appearance when due and repaints the bars at once if the tint changed
@@ -2538,10 +2553,10 @@ async function setOption($: EngineInterface, field: 'twinkle' | 'doneBarSeconds'
   }
 }
 
-// the version row: the mod's own version, and on a press the newest published release of it. The marketplace repo holds
-// several mods, so a release is ours by its tag (plan-progress-v1.2.3); drafts and pre-releases are not offered.
+// the version row: the mod's own version, and on a press the newest published release of it. A release is ours by its
+// tag (plan-progress-v1.2.3), so the repo can hold other releases too; drafts and pre-releases are not offered.
 // PLAN_PROGRESS_RELEASES_URL points the check elsewhere (a local stand-in for GitHub while the update is developed)
-const RELEASES = 'https://api.github.com/repos/zycck/claude-mods/releases?per_page=100'
+const RELEASES = 'https://api.github.com/repos/carreirodev/mod-plan-pill-progress/releases?per_page=100'
 const RELEASE_TAG = 'plan-progress-v'
 // where a check or an update stands, in $.state: the window draws it, and it outlives the reload an update ends with
 const versionState = atom({ plugin: 'plan-progress', key: 'version' } as const, { phase: 'idle' } as VersionState)
@@ -3504,7 +3519,7 @@ export const register: Register = (on, options) => {
       const { Box, Button, Text, Raster } = $.ui.resolve(e)
       await read($, tick)
       const now = await $.clock.now()
-      await (firstTint ??= readTint($, now).then(() => void (isLight = tintIsLight())))
+      await (firstTint ??= Promise.all([readTint($, now), readTerm($)]).then(() => void (isLight = tintIsLight())))
       const cols = Math.max(1, e.props.bodyColumns || 100)
       const hasClicks = e.viewport?.isFullscreen === true
       // where clicks land, a bar with agent strips gets a fold button before its ✕; every row keeps its cell, so the

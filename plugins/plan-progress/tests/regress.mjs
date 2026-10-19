@@ -686,6 +686,47 @@ const C = {
     const fits = out.every(o => o.w + 'Task'.length + 13 <= o.cols)
     return [out.map(o => `${o.cols}: ${o.row.trim()}`).join(' | '), fits && out.every(o => o.row.includes('One │ A 1/2'))]
   },
+  async terminal_pill_has_round_ends_where_they_draw(E) {
+    // Ghostty, kitty and WezTerm draw Powerline's half circles themselves, and Omarchy's default font has them: there
+    // the pill ends in them, in the pill's colour over the track, its text as it was; any other terminal keeps the
+    // square ends rather than show a box. A finished bar's pill ends on the track's last cell
+    const L = '\uE0B6'
+    const R = '\uE0B4'
+    const draw = async (E, env, set = {}, done = false) =>
+      withMachine(set, async () => {
+        globalThis.ENV = env
+        try {
+          await create(E)
+          if (done) await E.call({ id: 't', state: 'done' })
+          const cells = (await E.terminal(120)).find(n => n.type === 'Raster' && n.props.key === 'track-t').props.cells
+          const w = new Uint32Array(Uint8Array.from(Buffer.from(cells, 'base64')).buffer)
+          return { row: glyphs(cells), cell: i => [w[i * 3 + 1], w[i * 3 + 2]] }
+        } finally {
+          delete globalThis.ENV
+        }
+      })
+    const ghostty = await draw(E, { TERM_PROGRAM: 'ghostty', TERM: 'xterm-ghostty' })
+    const kitty = await draw(await boot(file), { TERM: 'xterm-kitty', KITTY_WINDOW_ID: '1' })
+    const wezterm = await draw(await boot(file), { TERM_PROGRAM: 'WezTerm' })
+    const omarchy = await draw(await boot(file), { TERM: 'alacritty' }, { MAC: false, OMARCHY: OMARCHY_DARK })
+    const plain = await draw(await boot(file), { TERM_PROGRAM: 'iTerm.app', TERM: 'xterm-256color' })
+    const done = await draw(await boot(file), { TERM_PROGRAM: 'ghostty' }, {}, true)
+    const isRound = d => d.row.includes(`${L}One │ A 1/2${R}`)
+    // each end in the pill's colour (the background of the text beside it), over something else
+    const isTinted = d => {
+      const l = d.row.indexOf(L)
+      const r = d.row.indexOf(R)
+      const pill = d.cell(l + 1)[1]
+      return d.cell(l)[0] === pill && d.cell(r)[0] === pill && d.cell(l)[1] !== pill && d.cell(r)[1] !== pill
+    }
+    const rounds = [ghostty, kitty, wezterm, omarchy]
+    const isSquare = !plain.row.includes(L) && !plain.row.includes(R) && plain.row.includes('One │ A 1/2')
+    const endsLast = done.row.at(-1) === R && done.row.includes(L)
+    return [
+      `round in ${rounds.filter(isRound).length}/4, tinted ${rounds.filter(isTinted).length}/4, other terminal square ${isSquare}, done ends on the last cell ${endsLast}`,
+      rounds.every(isRound) && rounds.every(isTinted) && isSquare && endsLast,
+    ]
+  },
   async terminal_animates_by_blits(E) {
     await E.turnStart()
     await create(E)
@@ -1008,7 +1049,8 @@ const C = {
           for (let i = 0; i < w.length; i += 3) {
             if (w[i + 2] === accent) hasAccent = true
             const ch = String.fromCodePoint(w[i])
-            if (ch === ' ' || ch === '●' || ch === '│' || (w[i] >= 0x2800 && w[i] <= 0x28ff) || w[i + 1] & 0x01000000) continue
+            // the pill's round ends are its edge, the accent over the track, not text
+            if (ch === ' ' || ch === '●' || ch === '│' || ch === '\uE0B6' || ch === '\uE0B4' || (w[i] >= 0x2800 && w[i] <= 0x28ff) || w[i + 1] & 0x01000000) continue
             min = Math.min(min, contrast(q(parts(w[i + 1])), q(parts(w[i + 2]))))
           }
         }
@@ -1338,7 +1380,7 @@ const C = {
       await F.command('plan-progress-settings')
       const d = await pressVersion(F, 'version')
       const t = await versionRow(F, 'terminal')
-      globalThis.ENV.PLAN_PROGRESS_RELEASES_URL = 'http://127.0.0.1:47901/repos/zycck/claude-mods/releases'
+      globalThis.ENV.PLAN_PROGRESS_RELEASES_URL = 'http://127.0.0.1:47901/repos/carreirodev/mod-plan-pill-progress/releases'
       const back = await pressVersion(F, 'version-later')
       await pressVersion(F, 'version')
       const own = buttons => buttons.filter(k => k.startsWith('version')).join()
@@ -1350,8 +1392,8 @@ const C = {
           own(d.buttons) === 'version-update,version-later' &&
           own(t.buttons) === 'version-update,version-later' &&
           back.label === '↻ 1.0.0' &&
-          F.fetches[0].startsWith('https://api.github.com/repos/zycck/claude-mods/releases') &&
-          F.fetches[1] === 'http://127.0.0.1:47901/repos/zycck/claude-mods/releases',
+          F.fetches[0].startsWith('https://api.github.com/repos/carreirodev/mod-plan-pill-progress/releases') &&
+          F.fetches[1] === 'http://127.0.0.1:47901/repos/carreirodev/mod-plan-pill-progress/releases',
       ]
     } finally {
       clearVersion()
@@ -2998,7 +3040,7 @@ const C = {
     return [`child on ${c ? 'agents bar' : 'nothing'}: ${c?.state}, depth ${c?.depth}`, c?.state === 'done' && c.depth === 0]
   },
   async windows_sound_path_goes_through_env(E) {
-    E.$.plugin.root = "C:/Users/O'Brien/.claude/plugins/cache/zycck-mods/plan-progress/0.7.7"
+    E.$.plugin.root = "C:/Users/O'Brien/.claude/plugins/cache/plan-pill-progress/plan-progress/0.7.7"
     await E.ask()
     await new Promise(r => setTimeout(r, 10))
     const at = E.procs.findIndex(p => p.startsWith('powershell'))
