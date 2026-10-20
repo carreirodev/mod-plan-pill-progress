@@ -27,17 +27,21 @@ Based on plan-progress by Kirill Serditov, under the MIT license.
 
 Requires Claude Code 2.1.295 or newer (`claude --version`; `claude update` to upgrade). On older versions parts of the mod do not work: the settings window stays empty, and before 2.1.286 the hooks module does not load at all, no bars appear and the startup banner says `plan-progress: hooks module did not load`.
 
+It installs from [WPC Mods for Claude](https://github.com/carreirodev/wpc-mods-claude), the marketplace with all my mods:
+
 ```
-/plugin marketplace add carreirodev/mod-plan-pill-progress
-/plugin install plan-progress@plan-pill-progress
+/plugin marketplace add carreirodev/wpc-mods-claude
+/plugin install plan-progress@wpc-mods-claude
 ```
 
 Update:
 
 ```
-claude plugin marketplace update plan-pill-progress
-claude plugin update plan-progress@plan-pill-progress
+claude plugin marketplace update wpc-mods-claude
+claude plugin update plan-progress@wpc-mods-claude
 ```
+
+Installed it earlier from this repository's own marketplace (`plan-progress@plan-pill-progress`)? That copy keeps updating as before. To switch, follow [these steps](https://github.com/carreirodev/wpc-mods-claude#if-you-already-installed-a-mod-from-its-own-repository); don't keep both, since only one would run.
 
 ## Commands
 
