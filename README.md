@@ -1,6 +1,6 @@
-# plan-progress
+# Plan Pill Progress
 
-**English** · [Português](README.pt-BR.md)
+**English** · [Português (Brasil)](README.pt-BR.md)
 
 Live progress bars above the Claude Code prompt. Claude splits a task into stages and steps, and the bar fills as it works. The subagents for each task are listed under its bar.
 
@@ -27,17 +27,37 @@ Based on plan-progress by Kirill Serditov, under the MIT license.
 
 Requires Claude Code 2.1.295 or newer (`claude --version`; `claude update` to upgrade). On older versions parts of the mod do not work: the settings window stays empty, and before 2.1.286 the hooks module does not load at all, no bars appear and the startup banner says `plan-progress: hooks module did not load`.
 
-It installs from [WPC Mods for Claude](https://github.com/carreirodev/wpc-mods-claude), the marketplace with all my mods:
+It installs by its id, `plan-progress`, from [WPC Mods for Claude](https://github.com/carreirodev/wpc-mods-claude), the marketplace with all my mods. There are two ways, and they do the same thing: pick one.
+
+**Inside Claude Code**, in a session:
 
 ```
 /plugin marketplace add carreirodev/wpc-mods-claude
+```
+
+```
 /plugin install plan-progress@wpc-mods-claude
 ```
 
-Update:
+**From a terminal**, outside Claude Code:
+
+```
+claude plugin marketplace add carreirodev/wpc-mods-claude
+```
+
+```
+claude plugin install plan-progress@wpc-mods-claude
+```
+
+Either way, start a new session afterwards, or run `/reload-plugins` in one that's already open.
+
+Update, from a terminal:
 
 ```
 claude plugin marketplace update wpc-mods-claude
+```
+
+```
 claude plugin update plan-progress@wpc-mods-claude
 ```
 

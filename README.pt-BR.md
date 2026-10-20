@@ -1,6 +1,6 @@
-# plan-progress
+# Plan Pill Progress
 
-[English](README.md) · **Português**
+[English](README.md) · **Português (Brasil)**
 
 Barras de progresso ao vivo acima do campo de entrada do Claude Code. O Claude divide a tarefa em etapas e passos, e a barra avança conforme ele trabalha. Os subagentes de cada tarefa aparecem abaixo da barra.
 
@@ -27,17 +27,37 @@ Baseado no plan-progress de Kirill Serditov, sob a licença MIT.
 
 Requer o Claude Code 2.1.295 ou mais recente (`claude --version`; atualize com `claude update`). Em versões anteriores parte do mod não funciona: a janela de configurações fica vazia e, antes da 2.1.286, o módulo de hooks nem carrega, nenhuma barra aparece e na inicialização aparece `plan-progress: hooks module did not load`.
 
-Ele se instala a partir do [WPC Mods for Claude](https://github.com/carreirodev/wpc-mods-claude/blob/main/README.pt-BR.md), o marketplace com todos os meus mods:
+Ele se instala pelo seu identificador, `plan-progress`, a partir do [WPC Mods for Claude](https://github.com/carreirodev/wpc-mods-claude/blob/main/README.pt-BR.md), o marketplace com todos os meus mods. Há dois jeitos, e os dois fazem a mesma coisa: escolha um.
+
+**Dentro do Claude Code**, numa sessão:
 
 ```
 /plugin marketplace add carreirodev/wpc-mods-claude
+```
+
+```
 /plugin install plan-progress@wpc-mods-claude
 ```
 
-Atualização:
+**Pelo terminal**, fora do Claude Code:
+
+```
+claude plugin marketplace add carreirodev/wpc-mods-claude
+```
+
+```
+claude plugin install plan-progress@wpc-mods-claude
+```
+
+De um jeito ou do outro, depois abra uma sessão nova, ou rode `/reload-plugins` numa sessão já aberta.
+
+Atualização, pelo terminal:
 
 ```
 claude plugin marketplace update wpc-mods-claude
+```
+
+```
 claude plugin update plan-progress@wpc-mods-claude
 ```
 
