@@ -12,7 +12,7 @@ Based on plan-progress by Kirill Serditov, under the MIT license.
 - A finished bar turns green, shows the total time and stays until it is closed; with `/plan-progress-autoclose` on, it leaves after `doneBarSeconds` (30 s by default, in `/config`)
 - The dots of the fill and of the subagent rows twinkle; turn `twinkle` off in `/config` to draw them still
 - Four states: running, needs input, error, done
-- Each subagent gets a row under its task: name, model and effort, current tool, time
+- Each subagent gets a row under its task: its number, name, model and effort, current tool, time; in the terminal its mark spins while it runs and turns into ✓ or ✕ when it ends
 - The plan can change mid-run; finished steps are kept by title
 - Bars are saved per session and come back when the session is resumed
 - Short sounds for a question, an error and completion
@@ -21,7 +21,8 @@ Based on plan-progress by Kirill Serditov, under the MIT license.
 - Updates: the version in the settings window, pressed, looks for a newer release, and Update installs it and reloads the mod in place (if the reload does not take, it asks for a restart). Once every 6 hours the mod also checks by itself and marks the ⚙ with 🔹 (● in the terminal) when a new version is out. A check is one request to the GitHub API (`api.github.com/repos/carreirodev/mod-plan-pill-progress/releases`), with no account or session data in it; turn it off with Check for updates in the window or with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. A copy installed from a folder is not checked
 - Works in the desktop app and in the terminal
 - In the terminal the bar follows a light or dark GNOME desktop with the `auto` theme, and takes the colors of the active Omarchy theme
-- In the terminal the pill has round ends in WezTerm, Ghostty and kitty, and with an Omarchy theme; other terminals keep square ends, as their font may lack the glyphs
+- In the terminal the fill is the desktop's grid of dots, with the same wave of light streaming over it
+- In the terminal the bar, its pill and the subagent rows have round ends, and each row a bot before its number, in WezTerm, Ghostty (and terminals built on it, such as noctty) and kitty, and with an Omarchy theme; other terminals keep square ends and the bare number, as their font may lack the glyphs
 
 ## Install
 

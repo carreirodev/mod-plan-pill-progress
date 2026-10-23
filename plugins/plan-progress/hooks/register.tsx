@@ -493,6 +493,8 @@ const STREAM_LEVELS = [0.3, 0.37, 0.44, 0.51] // the grid's brightness at each s
 const FLICKER_TILE = 173 // columns the flicker classes are dealt over, every dot in exactly one
 const FLICKER_CLASSES = 24
 const FLICKER_LIFTS = [0, 0.35, 0.6, 0.9]
+// the share of terminal cells that show one bright dot instead of their grid while their flicker is at its top step
+const SPARK_SHARE = 0.35
 // [share of the fill, opacity]: the grid fades in from nothing at the start to full at two thirds; the flicker fades in
 // later and steeper, so it sparkles at the head and thins out on its way to the start
 const STREAM_FADE: [number, number][] = [[0, 0], [0.67, 1], [1, 1]]
@@ -504,9 +506,17 @@ const streamHash = (a: number, b: number, k: number) => {
   x = Math.imul(x ^ (x >>> 13), 1274126177)
   return ((x ^ (x >>> 16)) >>> 0) / 4294967296
 }
-// the wave: noise over STREAM_COLS columns (wrapping), smoothed to blobs a few columns wide and cut into steps. Drawn
-// as one stroke per step through its runs of columns, the full height of the track
-const STREAM_WAVE = (() => {
+// where a terminal bar or agent strip starts dealing its random dots, taken from its id (FNV-1a): its own on every
+// draw, and another for each bar and each agent, so no two show the same dots column for column
+const seedOf = (id: string) => {
+  let x = 2166136261
+  for (let i = 0; i < id.length; i++) x = Math.imul(x ^ id.charCodeAt(i), 16777619)
+  return (x >>> 0) % 9973
+}
+// the wave: noise over STREAM_COLS columns (wrapping), smoothed to blobs a few columns wide and cut into steps, the
+// step of each column. The desktop draws it as one stroke per step through its runs of columns, the full height of
+// the track; the terminal reads it a cell at a time
+const STREAM_STEPS = (() => {
   const raw = Array.from({ length: STREAM_COLS }, (_, i) => streamHash(i, 0, 5))
   const smooth = raw.map((_, i) => {
     let sum = 0
@@ -520,7 +530,10 @@ const STREAM_WAVE = (() => {
   })
   const lo = Math.min(...smooth)
   const hi = Math.max(...smooth)
-  const steps = smooth.map(v => Math.min(STREAM_LEVELS.length - 1, Math.floor(((v - lo) / (hi - lo)) * STREAM_LEVELS.length)))
+  return smooth.map(v => Math.min(STREAM_LEVELS.length - 1, Math.floor(((v - lo) / (hi - lo)) * STREAM_LEVELS.length)))
+})()
+const STREAM_WAVE = (() => {
+  const steps = STREAM_STEPS
   const runs = STREAM_LEVELS.map((level, l) => {
     let d = ''
     let end = -1
@@ -554,23 +567,50 @@ const FLICKER = (() => {
         last = [c * 3, r * 3]
       }
     }
-    // in ticks; a frame that would hold the level it already has is left out
+    // in ticks; a frame that would hold the level it already has is left out. lifts keeps the same timeline as [tick,
+    // level] pairs for the terminal, which plays it a cell at a time
     const length = Math.round((2.3 + 2.4 * streamHash(k, 1, 11)) / FLICKER_TICK)
     const frames: string[] = []
+    const lifts: [number, number][] = []
     let level = 0
     let shown = -1
     for (let t = 0, i = 0; t < length - 1; i++) {
-      if (level !== shown) frames.push(`${+((t / length) * 100).toFixed(3)}%{opacity:${FLICKER_LIFTS[level]}}`)
+      if (level !== shown) {
+        frames.push(`${+((t / length) * 100).toFixed(3)}%{opacity:${FLICKER_LIFTS[level]}}`)
+        lifts.push([t, level])
+      }
       shown = level
       t += Math.max(1, Math.round((0.07 + 0.23 * streamHash(k, i, 13)) / FLICKER_TICK))
       const u = streamHash(k, i, 15)
       level = u < 0.4 ? Math.max(0, level - 1) : u < 0.8 ? Math.min(3, level + 1) : 0
     }
-    const css = `.q${k}{opacity:0;animation:q${k} ${(length * FLICKER_TICK).toFixed(2)}s step-end infinite;animation-delay:calc(var(--f) - ${(Math.round(streamHash(k, 2, 16) * length) * FLICKER_TICK).toFixed(2)}s)}@keyframes q${k}{${frames.join('')}}`
-    return { d, css }
+    const delay = Math.round(streamHash(k, 2, 16) * length)
+    const css = `.q${k}{opacity:0;animation:q${k} ${(length * FLICKER_TICK).toFixed(2)}s step-end infinite;animation-delay:calc(var(--f) - ${(delay * FLICKER_TICK).toFixed(2)}s)}@keyframes q${k}{${frames.join('')}}`
+    return { d, css, lifts, length, delay }
   })
 })()
 const FLICKER_CSS = FLICKER.map(f => f.css).join('')
+// the step of FLICKER_LIFTS flicker class k is at ms into the plan, where its timeline in the desktop's picture is then
+function liftStep(k: number, ms: number): number {
+  const f = FLICKER[k]
+  if (!f) return 0
+  const at = (((Math.floor(ms / (FLICKER_TICK * 1000)) + f.delay) % f.length) + f.length) % f.length
+  let level = 0
+  for (const [t, l] of f.lifts) {
+    if (t > at) break
+    level = l
+  }
+  return level
+}
+// a fade's opacity at a share of the fill, between its stops
+function fadeAt(stops: [number, number][], u: number): number {
+  for (let i = 1; i < stops.length; i++) {
+    const [a, oa] = stops[i - 1] ?? [0, 0]
+    const [b, ob] = stops[i] ?? [1, 1]
+    if (u <= b) return b === a ? ob : oa + ((ob - oa) * (u - a)) / (b - a)
+  }
+  return stops.at(-1)?.[1] ?? 1
+}
 // the twinkle option in /config (#23). Off, the fill stands still as reduce motion draws it, the flicker left out and
 // the wave's bands kept where they start, and the strips' dots and the terminal fill hold their middle brightness; the
 // clocks, the glides and the agents' status dots still move
@@ -1505,48 +1545,65 @@ function trackCells(p: Plan, W: number, t: number): string {
   const back = termBg()
   const acc = hex(stateColor(p.state))
   const light = mix(acc, [255, 255, 255], 0.35)
-  const grey = [120, 118, 128]
   const track = mix(back, [128, 128, 128], isLight ? 0.14 : 0.18)
-  const fill = mix(track, acc, done ? 0.3 : 0.17)
-  const under = (x: number) => (x + 0.5 < fx ? fill : track)
-  pill(g, 0, 0, W, under)
+  // the fill's ground, as the desktop's gradient: the accent rising out of the track from the start to the head
+  const ground = (x: number) => mix(track, acc, (done ? 0.14 : 0.05) + (done ? 0.18 : 0.27) * q((x + 0.5) / Math.max(1, fx)))
+  const under = (x: number) => (x + 0.5 < fx ? ground(x) : track)
+  // where the terminal draws round ends the track is a capsule: its first and last cells are the ends, over the
+  // terminal's own background, as the pill's are
+  const isCapsule = hasRoundEnds() && W >= 6
+  const isEnd = (x: number) => isCapsule && (x === 0 || x === W - 1)
+  const backAt = (x: number) => (isEnd(x) ? DEFAULT : pack(under(x)))
+  for (let x = 0; x < W; x++) g.set(x, 0, isEnd(x) ? (x === 0 ? '\uE0B6' : '\uE0B4') : ' ', isEnd(x) ? pack(under(x)) : DEFAULT, backAt(x))
 
-  const TWINKLE = done ? [3200, 3800, 4400, 3500] : [2200, 2800, 1900, 3300]
-  const DELAY = [0, 700, 1300, 400]
-  const dim = done ? 0.2 : 0.55
+  // the fill is the desktop's grid of dots, its brightness streaming from the head towards the start in the same wave
+  // and every cell flickering on a timeline of the desktop's own, both fading in along the fill. The wave runs a column
+  // of dots at a time, two to a cell; at rest (waiting, failed, done) at half the speed. A cell has one colour, so the
+  // desktop's dot-by-dot brightness is dealt as which of its braille dots show (sparse at the start, all but full at
+  // the head, the same ones on every frame) and a brightness of the cell's own. Some cells, at the top of their
+  // flicker, show one dot alone, near white (dimmer towards the start): the desktop's lone bright dots. A braille dot
+  // covers less of its cell than the desktop's of its pitch, so the grid is lit brighter here, and it never quite
+  // fades out at the start. Each bar deals from a place of its own (seedOf), so two bars never show the same dots
+  const ms = Math.max(0, phase - p.startedAt)
+  const speed = p.state === 'running' ? STREAM_SPEED : STREAM_SPEED / 2
+  const shift = isTwinkling ? Math.floor((ms / 1000) * speed) : 0
+  const spark = mix(light, [255, 255, 255], isLight ? 0 : 0.55)
+  const seed = seedOf(p.id)
   for (let col = 0; col < Math.min(W, Math.ceil(fx)); col++) {
+    if (isEnd(col)) continue
     const u = Math.min(1, (col + 0.5) / Math.max(1, fx))
-    const dense = done ? 0.8 : 0.22 + 0.78 * Math.pow(u, 1.5)
-    let bits = 0
-    for (let r = 0; r < 4; r++) {
-      for (let c = 0; c < 2; c++) {
-        const sx = col * 2 + c
-        if (sx / 2 >= fx || hash(sx, r, 1) > dense * 0.6) continue
-        bits |= BRAILLE_BITS[r]?.[c] ?? 0
-      }
+    const fade = fadeAt(STREAM_FADE, u)
+    const at = col + seed
+    const level = STREAM_LEVELS[STREAM_STEPS[(at * 2 + shift) % STREAM_COLS] ?? 0] ?? 0
+    const step = isTwinkling ? liftStep(Math.floor(streamHash(at, 0, 302) * FLICKER_CLASSES), ms) : 0
+    const lift = fadeAt(FLICKER_FADE, u) * (FLICKER_LIFTS[step] ?? 0)
+    const ground0 = ground(col)
+    if (step === FLICKER_LIFTS.length - 1 && streamHash(at, 5, 53) < SPARK_SHARE) {
+      const dot = Math.floor(streamHash(at, 3, 41) * 8)
+      g.set(col, 0, 0x2800 + (BRAILLE_BITS[dot % 4]?.[dot >> 2] ?? 0), pack(mix(ground0, spark, q(0.45 + 0.55 * fade))), pack(ground0))
+      continue
     }
-    if (bits === 0) continue
-    const cls = Math.floor(hash(col, 0, 2) * 4)
-    const period = TWINKLE[cls] ?? 2200
-    const blink = 1 - dim * (isTwinkling ? wave(phase + (DELAY[cls] ?? 0), period, 0.25) : 0.5)
-    const bucket = done ? 1 : q(Math.min(1, Math.pow(u, 0.9) * 1.1))
-    const tone = mix(grey, light, bucket)
-    const opacity = (0.35 + 0.65 * dense) * blink
-    g.set(col, 0, 0x2800 + bits, pack(mix(fill, tone, q(opacity))), pack(fill))
+    let bits = 0
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 2; c++) if (streamHash(at * 2 + c, r, 77) < 0.3 + 0.6 * fade) bits |= BRAILLE_BITS[r]?.[c] ?? 0
+    const grid = Math.min(1, (0.25 + 0.75 * fade) * level * 1.6 * (0.6 + 0.4 * streamHash(at, 1, 91)))
+    const alpha = q(1 - (1 - grid) * (1 - lift))
+    if (alpha === 0 || bits === 0) continue
+    g.set(col, 0, 0x2800 + bits, pack(mix(ground0, light, alpha)), pack(ground0))
   }
 
+  // a stage boundary is a line, a step a dot where the track leaves room for them; bright once passed (on a light
+  // track dark, where the fill is pale too), grey ahead. Passed steps are left to the fill's dots
+  const passedMark = isLight ? mix(acc, [0, 0, 0], 0.3) : mix(light, [255, 255, 255], 0.5)
+  const aheadMark = mix(track, isLight ? [0, 0, 0] : [255, 255, 255], 0.4)
+  const isRoomy = W / Math.max(1, w.total) >= 3
   let k = 0
   p.stages.forEach(s => {
-    if (k > 0) {
+    s.steps.forEach((_, j) => {
       const x = Math.round((k / w.total) * W)
-      if (x > 0 && x < W - 1) {
-        const passed = x < fx - 0.5
-        // a passed boundary is bright on a dark track and dark on a light one, where the fill is pale too
-        const mark = passed ? (isLight ? mix(acc, [0, 0, 0], 0.3) : mix(light, [255, 255, 255], 0.5)) : mix(track, isLight ? [0, 0, 0] : [255, 255, 255], 0.45)
-        g.set(x, 0, '│', pack(mark), pack(under(x)))
-      }
-    }
-    k += s.steps.length
+      const passed = x < fx - 0.5
+      if (k > 0 && x > 0 && x < W - 1 && (j === 0 || (isRoomy && !passed))) g.set(x, 0, j === 0 ? '│' : '·', pack(passed ? passedMark : aheadMark), pack(under(x)))
+      k++
+    })
   })
 
   const base = hex(stateColor(p.state))
@@ -1581,32 +1638,62 @@ function trackCells(p: Plan, W: number, t: number): string {
   // the separator in the text's own colour: every cell of the pill reads at AA
   if (tail) at += g.text(at, 0, tail, white, pack(color))
   if (count) g.text(at + 1, 0, count, white, pack(color))
-  // round ends where the terminal can draw them (hasRoundEnds), in the cell of room the text leaves at each side
+  // round ends where the terminal can draw them (hasRoundEnds), in the cell of room the text leaves at each side; at
+  // an end of the capsule over the terminal's background, as the track's own end would be
   if (hasRoundEnds()) {
-    g.set(kx, 0, '\uE0B6', pack(color), pack(under(kx)))
-    g.set(kx + kw - 1, 0, '\uE0B4', pack(color), pack(under(kx + kw - 1)))
+    g.set(kx, 0, '\uE0B6', pack(color), backAt(kx))
+    g.set(kx + kw - 1, 0, '\uE0B4', pack(color), backAt(kx + kw - 1))
   }
   return g.encode()
 }
 
-function stripCells(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now: number): { cells: string; rows: number } {
+// a running agent's status turns as a braille spinner, a frame every SPIN_MS
+const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+const SPIN_MS = 80
+// the bot before a strip, as the desktop's gutter has: Codicons' hubot from the Nerd Font symbols, which the
+// terminals that draw round ends carry (hasRoundEnds); elsewhere the gutter is the number alone
+const BOT_GLYPH = '\uEB08'
+
+// one strip per agent under the bar: a gutter with the bot and its number, then a capsule tinted by how it goes, as on
+// the desktop. Its status mark spins while it runs, pulses while it waits on the person, and is a tick or a cross once over
+function stripCells(v: { shown: AgentRun[]; hidden: AgentRun[] }, all: readonly AgentRun[], W: number, now: number): { cells: string; rows: number } {
   const rows = v.shown.length + (v.hidden.length > 0 ? 1 : 0)
   const g = new Grid(W, rows)
   const back = termBg()
   const text = pack(termFg())
+  const hasBot = hasRoundEnds()
+  // the gutter is as wide as the widest number needs, and only where the strips keep room for their words beside it
+  const widest = Math.max(1, ...v.shown.map(a => String(all.indexOf(a) + 1).length), v.hidden.length > 0 ? String(v.hidden.length).length + 1 : 0)
+  const G = W >= 40 ? (hasBot ? 2 : 0) + widest + 1 : 0
+  const isCapsule = hasRoundEnds() && W - G >= 8
+  const gutter = (y: number, label: string, color: number[]) => {
+    if (G === 0) return
+    const ink = pack(dimOn(back, color))
+    if (hasBot) g.set(0, y, BOT_GLYPH, ink, DEFAULT)
+    g.text(G - 1 - label.length, y, label, ink, DEFAULT)
+  }
+  const capsule = (y: number, tint: number[]) => {
+    for (let x = G; x < W; x++) g.set(x, y, ' ', DEFAULT, pack(tint))
+    if (!isCapsule) return
+    g.set(G, y, '\uE0B6', pack(tint), DEFAULT)
+    g.set(W - 1, y, '\uE0B4', pack(tint), DEFAULT)
+  }
   v.shown.forEach((a, y) => {
     const c = hex(agentColor(a.state))
     const tint = mix(back, c, 0.18)
-    pill(g, y, 0, W, () => tint)
+    gutter(y, String(all.indexOf(a) + 1), hex(scheme().gutter))
+    capsule(y, tint)
     const running = a.state === 'running' || a.state === 'waiting'
     if (running) {
-      for (let col = 1; col < W - 1; col++) {
+      // the agent's own dots (seedOf), which go with it when its strip moves up a row
+      const seed = seedOf(a.id)
+      for (let col = G + 1; col < W - 1; col++) {
         let bits = 0
         let glow = 0
         for (let r = 0; r < 4; r++) {
           for (let cc = 0; cc < 2; cc++) {
-            const sx = col * 2 + cc + y * 83
-            if (hash(sx, r, 5) >= 0.08) continue
+            const sx = (col + seed) * 2 + cc
+            if (hash(sx, r, 5) >= 0.16) continue
             const b = 1 - 0.55 * (isTwinkling ? wave(now, 1900 + hash(sx, r, 6) * 1400, hash(sx, r, 7)) : 0.5)
             bits |= BRAILLE_BITS[r]?.[cc] ?? 0
             glow = Math.max(glow, b)
@@ -1616,15 +1703,20 @@ function stripCells(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now
       }
     }
     const indent = a.depth > 0 ? 2 : 0
-    const dotColor = running ? mix(tint, c, 0.3 + 0.7 * q(wave(now, 1100))) : c
-    g.text(2 + indent, y, '●', pack(dotColor), pack(tint))
+    // the spinner, the tick and the cross take the tool word's colour, which reads at AA on the tint (braille dots are
+    // thin, and in the accent itself the spinner would all but vanish); the waiting dot pulses in the state's colour
+    const mark =
+      a.state === 'running' ? { ch: SPINNER[Math.floor(now / SPIN_MS) % SPINNER.length] ?? '●', ink: wordOn(tint, hex(omarchy ? omarchy.accent : scheme().word.running)) }
+      : a.state === 'waiting' ? { ch: '●', ink: mix(tint, c, 0.3 + 0.7 * q(wave(now, 1100))) }
+      : { ch: a.state === 'done' ? '✓' : '✕', ink: wordOn(tint, hex(scheme().word[a.state])) }
+    g.text(G + 2 + indent, y, mark.ch, pack(mark.ink), pack(tint))
     const time = elapsed((a.endedAt ?? now) - a.startedAt)
-    const narrow = W < 30
+    const narrow = W - G < 30
     const tx = W - 2 - time.length
     // the tool word sits at the right, just before the time, so the name and its model get the rest of the row
     const word = narrow || !running ? '' : fit(toolWord(a.tool), Math.max(0, Math.floor(W * 0.25)))
     const toolAt = tx - 1 - word.length
-    let at = 4 + indent
+    let at = G + 4 + indent
     const spec = [a.model ? modelName(a.model) : '', a.effort ?? ''].filter(Boolean).join(' · ')
     const title = (a.depth > 0 ? '↳ ' : '') + a.title
     const full = title + (spec ? ` (${spec})` : '')
@@ -1648,9 +1740,12 @@ function stripCells(v: { shown: AgentRun[]; hidden: AgentRun[] }, W: number, now
   if (v.hidden.length > 0) {
     const y = v.shown.length
     const tint = mix(back, [128, 128, 128], 0.16)
-    pill(g, y, 0, W, () => tint)
+    gutter(y, `+${v.hidden.length}`, hex(scheme().more))
+    capsule(y, tint)
     const doneCount = v.hidden.filter(a => a.state === 'done').length
-    g.text(2, y, fit(`+${plural(v.hidden.length, 'more agent')} · ${doneCount} done`, W - 4), pack(dimOn(tint, hex(scheme().dim))), pack(tint))
+    // the gutter says how many already; without one the line does
+    const more = `${G > 0 ? '' : '+'}${plural(v.hidden.length, 'more agent')} · ${doneCount} done`
+    g.text(G + 2, y, fit(more, W - G - 4), pack(dimOn(tint, hex(scheme().dim))), pack(tint))
   }
   return { cells: g.encode(), rows }
 }
@@ -1816,7 +1911,7 @@ function blitPlans($: EngineInterface, b: Band, list: readonly Plan[], now: numb
   return Promise.all(
     list.flatMap(p => {
       const v = shownAgents(p, now, stripBudget(b.list.length))
-      const strips = v ? stripCells(v, b.W, now) : null
+      const strips = v ? stripCells(v, p.agents ?? [], b.W, now) : null
       return [...blit(`track-${p.id}`, trackCells(p, b.W, now), 1), ...(strips ? blit(`strips-${p.id}`, strips.cells, strips.rows) : [])]
     }),
   )
@@ -3539,7 +3634,7 @@ export const register: Register = (on, options) => {
         <Box flexDirection="column">
           {list.map(p => {
             const v = shownAgents(p, now, stripBudget(list.length))
-            const strips = v ? stripCells(v, trackW, now) : null
+            const strips = v ? stripCells(v, p.agents ?? [], trackW, now) : null
             const w = where(p)
             const pct = percent(p, w)
             return (

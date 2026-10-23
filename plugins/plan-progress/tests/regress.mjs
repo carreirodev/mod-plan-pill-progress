@@ -13,8 +13,12 @@ const glyphs = cells => {
   for (let i = 0; i < w.length; i += 3) out += String.fromCodePoint(w[i])
   return out
 }
-// the track's unfilled background, read from the last cell of its latest frame
-const backOf = cells => new Uint32Array(Uint8Array.from(Buffer.from(cells, 'base64')).buffer).at(-1)
+// the track's unfilled background, read from the last cell of its latest frame: where the track is a capsule that cell
+// is its round end, the track's colour drawn over the terminal's own background
+const backOf = cells => {
+  const w = new Uint32Array(Uint8Array.from(Buffer.from(cells, 'base64')).buffer)
+  return (w.at(-1) ?? 0) & 0x01000000 ? w.at(-2) : w.at(-1)
+}
 const lum = c => ((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255)
 const LUM_MID = 384
 // the latest track frame: a repaint if there was one, else the raster of the last render
@@ -24,6 +28,8 @@ const trackTint = async E => {
   const r = (await E.terminal(120)).find(n => n.type === 'Raster' && n.props.key === 'track-t')
   return backOf(r.props.cells)
 }
+// a little over the time a running strip's spinner holds one frame
+const SPIN_FRAME = 90
 const MACHINE = ['MAC', 'DARK', 'TERM_PROGRAM', 'THEME', 'SCHEME', 'OMARCHY']
 // every cell's background in a track frame, and the colors.toml of two Omarchy themes
 const backsOf = cells => {
@@ -727,6 +733,54 @@ const C = {
       rounds.every(isRound) && rounds.every(isTinted) && isSquare && endsLast,
     ]
   },
+  async terminal_track_and_strips_are_capsules_where_they_draw(E) {
+    // where the pill has round ends the track and every agent strip are capsules too, over the terminal's own
+    // background, and a strip's gutter carries the bot and the agent's number. A running agent's mark spins, a finished
+    // one is a tick and a failed one a cross; a terminal without the glyphs keeps square ends and the bare number
+    const L = '\uE0B6'
+    const R = '\uE0B4'
+    const BOT = '\uEB08'
+    const draw = async (E, env) =>
+      withMachine({}, async () => {
+        globalThis.ENV = env
+        try {
+          await E.turnStart()
+          await create(E)
+          await E.spawn('ag1', 'Scan routes')
+          await E.spawn('ag2', 'Read cart store')
+          await E.spawn('ag3', 'Break things')
+          await E.turnComplete('ag2')
+          await E.turnComplete('ag3', 'error')
+          const raster = async key => (await E.terminal(120)).find(n => n.type === 'Raster' && n.props.key === key).props
+          const track = await raster('track-t')
+          const strips = await raster('strips-t')
+          E.tick(SPIN_FRAME)
+          const later = await raster('strips-t')
+          const words = cells => new Uint32Array(Uint8Array.from(Buffer.from(cells, 'base64')).buffer)
+          const rows = (props, cells = props.cells) => Array.from({ length: props.rows }, (_, y) => glyphs(cells).slice(y * props.columns, (y + 1) * props.columns))
+          const t = words(track.cells)
+          return { track: glyphs(track.cells), trackEnds: [t[2], t.at(-1)], rows: rows(strips), later: rows(strips, later.cells), stripWords: words(strips.cells), columns: strips.columns }
+        } finally {
+          delete globalThis.ENV
+        }
+      })
+    const DEFAULT = 0x01000000
+    const round = await draw(E, { TERM_PROGRAM: 'ghostty', TERM: 'xterm-ghostty' })
+    const plain = await draw(await boot(file), { TERM_PROGRAM: 'iTerm.app', TERM: 'xterm-256color' })
+    const isTrackCapsule = round.track.startsWith(L) && round.track.endsWith(R) && round.trackEnds.every(bg => bg === DEFAULT)
+    const capsuleAt = row => row.indexOf(L)
+    const isStripCapsule = round.rows.every(row => row.startsWith(BOT) && capsuleAt(row) > 0 && row.endsWith(R))
+    const numbers = round.rows.map(row => row.slice(1, capsuleAt(row)).trim()).join(',')
+    // the strip's mark sits two cells into its capsule
+    const mark = (row, at) => row[at + 2]
+    const marks = round.rows.map(row => mark(row, capsuleAt(row))).join('')
+    const spins = mark(round.rows[0], capsuleAt(round.rows[0])) !== mark(round.later[0], capsuleAt(round.later[0])) && /[\u2800-\u28ff]/.test(marks[0])
+    const isPlainSquare = [plain.track, ...plain.rows].every(row => !row.includes(L) && !row.includes(R) && !row.includes(BOT)) && plain.rows.map(row => row.slice(0, 2).trim()).join(',') === '1,2,3'
+    return [
+      `track capsule ${isTrackCapsule}, strips capsules ${isStripCapsule} numbered ${numbers}, marks ${marks}, spins ${spins}, plain square ${isPlainSquare}`,
+      isTrackCapsule && isStripCapsule && numbers === '1,2,3' && marks.slice(1) === '✓✕' && spins && isPlainSquare,
+    ]
+  },
   async terminal_animates_by_blits(E) {
     await E.turnStart()
     await create(E)
@@ -984,9 +1038,10 @@ const C = {
       await E.terminal(120)
       E.tick(1000)
       await E.everyTick()
-      const backs = backsOf(await latestTrack(E))
+      const cells = await latestTrack(E)
+      const backs = backsOf(cells)
       const hasAccent = backs.includes(0x3264eb)
-      const track = backs.at(-1)
+      const track = backOf(cells)
       return [`accent ${hasAccent}, track ${track.toString(16)}`, hasAccent && !backs.includes(0x7858ca) && lum(track) > LUM_MID]
     })
   },
@@ -1042,6 +1097,8 @@ const C = {
         let min = Infinity
         let hasAccent = false
         const accent = parseInt(/accent = "#(\w+)"/.exec(toml)[1], 16)
+        // a cell on the terminal's own background (the gutter's bot and number) is read against the theme's background
+        const page = parseInt(/background = "#(\w+)"/.exec(toml)[1], 16)
         for (const key of ['strips-t', 'track-t']) {
           const r = nodes.find(n => n.type === 'Raster' && n.props.key === key)
           const w = new Uint32Array(Uint8Array.from(Buffer.from(r?.props.cells ?? '', 'base64')).buffer)
@@ -1049,9 +1106,10 @@ const C = {
           for (let i = 0; i < w.length; i += 3) {
             if (w[i + 2] === accent) hasAccent = true
             const ch = String.fromCodePoint(w[i])
-            // the pill's round ends are its edge, the accent over the track, not text
-            if (ch === ' ' || ch === '●' || ch === '│' || ch === '\uE0B6' || ch === '\uE0B4' || (w[i] >= 0x2800 && w[i] <= 0x28ff) || w[i + 1] & 0x01000000) continue
-            min = Math.min(min, contrast(q(parts(w[i + 1])), q(parts(w[i + 2]))))
+            // the round ends of the pill, the track and the strips are their edges, a colour over what is around them,
+            // and the track's lines and dots mark its stages and steps: none of them is text
+            if (ch === ' ' || ch === '●' || ch === '│' || ch === '\uE0B6' || ch === '\uE0B4' || (key === 'track-t' && ch === '·') || (w[i] >= 0x2800 && w[i] <= 0x28ff) || w[i + 1] & 0x01000000) continue
+            min = Math.min(min, contrast(q(parts(w[i + 1])), q(parts(w[i + 2] & 0x01000000 ? page : w[i + 2]))))
           }
         }
         out.push(`${name} ${min.toFixed(2)}${hasAccent ? '' : ' (no accent)'}`)
@@ -2928,9 +2986,12 @@ const C = {
     await E.spawn('ag2', 'Read cart store')
     await E.command('progress-agents')
     const track = (await E.svgs()).find(s => /^Task:/.test(s.alt)).source
-    const row = glyphs((await E.terminal(120)).find(n => n.type === 'Raster' && n.props.key === 'track-t').props.cells).trim()
-    const counted = /running|\d done/.test(track) || /·/.test(row)
-    return [`desktop counts ${/running|\d done/.test(track)}; terminal ${row}`, !counted && row.includes('One')]
+    // the pill's own cells, the ones on its violet: the track around it marks its steps with dots of its own
+    const w = new Uint32Array(Uint8Array.from(Buffer.from((await E.terminal(120)).find(n => n.type === 'Raster' && n.props.key === 'track-t').props.cells, 'base64')).buffer)
+    let pill = ''
+    for (let i = 0; i < w.length; i += 3) if (w[i + 2] === 0x7858ca) pill += String.fromCodePoint(w[i])
+    const counted = /running|\d done/.test(track) || /·/.test(pill)
+    return [`desktop counts ${/running|\d done/.test(track)}; terminal pill ${pill.trim()}`, !counted && pill.includes('One')]
   },
   async strip_dots_stay_inside_and_sit_close(E) {
     // the running strip's dots stay inside its rounded ends, and with one-digit numbers the strip starts close to them
@@ -3138,14 +3199,17 @@ const C = {
         for (const id of ['g4', 'g5', 'g6', 'g7']) await F.turnComplete(id)
         const nodes = await F.terminal(120)
         let min = Infinity
+        // a cell on the terminal's own background (the gutter's number) is read against the one the theme stands for
+        const page = theme === 'light' ? 0xffffff : 0x18181b
         for (const key of ['strips-t', 'track-t']) {
           const r = nodes.find(n => n.type === 'Raster' && n.props.key === key)
           const w = new Uint32Array(Uint8Array.from(Buffer.from(r?.props.cells ?? '', 'base64')).buffer)
           if (w.length === 0) min = 0
           for (let i = 0; i < w.length; i += 3) {
             const ch = String.fromCodePoint(w[i])
-            if (ch === ' ' || ch === '●' || ch === '│' || (w[i] >= 0x2800 && w[i] <= 0x28ff) || w[i + 1] & 0x01000000) continue
-            min = Math.min(min, contrast(q(parts(w[i + 1])), q(parts(w[i + 2]))))
+            // the track's lines and dots mark its stages and steps, not text
+            if (ch === ' ' || ch === '●' || ch === '│' || (key === 'track-t' && ch === '·') || (w[i] >= 0x2800 && w[i] <= 0x28ff) || w[i + 1] & 0x01000000) continue
+            min = Math.min(min, contrast(q(parts(w[i + 1])), q(parts(w[i + 2] & 0x01000000 ? page : w[i + 2]))))
           }
         }
         worst[theme] = min

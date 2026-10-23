@@ -12,7 +12,7 @@ Baseado no plan-progress de Kirill Serditov, sob a licença MIT.
 - Uma barra concluída fica verde, mostra o tempo total e fica até ser fechada; com `/plan-progress-autoclose` ativado, some após `doneBarSeconds` (30 s por padrão, em `/config`)
 - Os pontos do preenchimento e das linhas de subagentes cintilam; desative `twinkle` em `/config` para desenhá-los parados
 - Quatro estados: em andamento, aguardando resposta, erro, concluído
-- Cada subagente tem uma linha sob sua tarefa: nome, modelo e effort, ferramenta atual, tempo
+- Cada subagente tem uma linha sob sua tarefa: seu número, nome, modelo e effort, ferramenta atual, tempo; no terminal a marca dele gira enquanto roda e vira ✓ ou ✕ quando termina
 - O plano pode mudar durante o trabalho; os passos concluídos são mantidos pelo título
 - As barras são salvas por sessão e voltam quando a sessão é retomada
 - Sons curtos para pergunta, erro e conclusão
@@ -21,7 +21,8 @@ Baseado no plan-progress de Kirill Serditov, sob a licença MIT.
 - Atualizações: clicar na versão na janela de configurações procura uma versão nova, e «Atualizar» a instala e recarrega o mod na hora (se a recarga não funcionar, pede para reiniciar). A cada 6 horas o mod também verifica sozinho e marca o ⚙ com 🔹 (● no terminal) quando sai uma versão nova. Cada verificação é uma única requisição à API do GitHub (`api.github.com/repos/carreirodev/mod-plan-pill-progress/releases`), sem dados da conta ou da sessão; desligue em «Procurar atualizações» na janela ou com `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. Uma cópia instalada de uma pasta não é verificada
 - Funciona no app de desktop e no terminal
 - No terminal a barra segue o modo claro ou escuro do GNOME com o tema `auto` e usa as cores do tema ativo do Omarchy
-- No terminal a etiqueta tem pontas redondas no WezTerm, no Ghostty e no kitty, e com um tema do Omarchy; nos outros terminais fica com pontas retas, porque a fonte pode não ter esses símbolos
+- No terminal o preenchimento é a grade de pontos do desktop, com a mesma onda de luz correndo sobre ela
+- No terminal a barra, a etiqueta e as linhas dos subagentes têm pontas redondas, e cada linha um robô antes do número, no WezTerm, no Ghostty (e nos terminais feitos sobre ele, como o noctty) e no kitty, e com um tema do Omarchy; nos outros terminais ficam as pontas retas e só o número, porque a fonte pode não ter esses símbolos
 
 ## Instalação
 
