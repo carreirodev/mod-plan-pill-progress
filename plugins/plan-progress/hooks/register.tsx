@@ -885,8 +885,8 @@ function drawTrack(p: Plan, W: number, zone = 0, now = 0): Track {
       if (k > 0) {
         const x = zone + (k / w.total) * run
         const isStage = j === 0
-        // a stage boundary is a short capsule, a step a dot; bright once passed. On a light page both would fade into
-        // the track, so there the stylesheet darkens them by class
+        // a stage boundary is a short capsule, a step a dot; bright once passed. The class says which (no rule styles
+        // it since the track's page stays dark in either theme)
         const passed = x < fx - 1
         const fill = passed ? rgb(mix(light, [255, 255, 255], 0.45)) : '#A8A69E'
         const opacity = passed ? (isStage ? 0.95 : 0.8) : isStage ? 0.9 : 0.8
@@ -1027,11 +1027,12 @@ function drawTrack(p: Plan, W: number, zone = 0, now = 0): Track {
 @keyframes wm{to{transform:translateX(-${STREAM_COLS * 3}px)}}
 ${FLICKER_CSS}
 `
+  // the track lays the dark page in either theme: the frame's light or dark is the system's, not the app's (a light
+  // Windows under a dark VS Code drew it white), and the dots only show on a dark page
   const style = `<style>
 ${isTwinkling ? motion : ''}.kt{font:500 12px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:${INK}}
 .kp{font-size:11px;font-weight:400}.kn{font-variant-numeric:tabular-nums}
 .ti{font:500 12px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:${SCHEMES.dark.ink}}.pg{fill:${SCHEMES.dark.page}}
-@media (prefers-color-scheme:light){.mp{fill:${rgb(mix(acc, [0, 0, 0], 0.3))};opacity:1}.ma{fill:${SCHEMES.light.gutter};opacity:1}.ti{fill:${SCHEMES.light.ink}}.pg{fill:${SCHEMES.light.page}}}
 ${STILL_CSS}@media (prefers-reduced-motion:reduce){.wm,[class^="q"]{animation:none}${STILL_REDUCED}}
 </style>`
   const hoverStyle = `<style>
@@ -1082,9 +1083,9 @@ const AGENT_COLOR: Record<AgentRun['state'], string> = {
 const agentColor = (s: AgentRun['state']) => (s === 'running' ? stateColor('running') : AGENT_COLOR[s])
 
 // strip text that reads at WCAG AA (4.5:1) on its tint, in a dark and a light scheme (issue #13). The desktop draws
-// a strip as a picture over the app's background, which no event tells the plugin: the picture carries both sets,
-// its media query picks one, and it lays its own opaque page under the tint, so a wrong guess still pairs the text
-// with its backing. The terminal picks by isLight
+// a strip as a picture over the app's background, which no event tells the plugin: it lays its own opaque page under
+// the tint, the dark one in either scheme as the track does, and only the gutter beside it, on the app's background,
+// takes the set its media query picks. The terminal picks by isLight
 type Scheme = { page: string; ink: string; dim: string; gutter: string; more: string; word: Record<AgentRun['state'], string> }
 const SCHEMES: Record<'dark' | 'light', Scheme> = {
   dark: { page: '#1F1E1D', ink: '#F0EEFC', dim: '#A7A5AE', gutter: '#A8A69E', more: '#9A9993', word: { running: '#9C85D8', waiting: '#C0883B', done: '#4FA569', error: '#D67278' } },
@@ -1451,16 +1452,18 @@ function stripsSvg(v: { shown: AgentRun[]; hidden: AgentRun[] }, all: AgentRun[]
   return rows
 }
 
-// a scheme's colours as the strip's classes; in the stylesheet the light set follows the dark one, so it wins where
-// its query holds, and the dim and tool word follow the name they colour over
-const schemeCss = (s: Scheme) =>
-  `.sb{fill:${s.page}}.sn{fill:${s.ink}}.st{fill:${s.dim}}.gu{color:${s.gutter}}.gm{color:${s.more}}` +
-  Object.entries(s.word).map(([state, c]) => `.w-${state}{fill:${c}}`).join('')
+// a scheme's colours as the strip's classes. The capsule's take the dark set in either scheme (the system's light or
+// dark is not the app's: a light Windows under a dark VS Code drew the strips white); the dim and tool word follow the
+// name they colour over. The gutter's follow the scheme, the light set after the dark one so it wins where its query
+// holds
+const capsuleCss = (s: Scheme) =>
+  `.sb{fill:${s.page}}.sn{fill:${s.ink}}.st{fill:${s.dim}}` + Object.entries(s.word).map(([state, c]) => `.w-${state}{fill:${c}}`).join('')
+const gutterCss = (s: Scheme) => `.gu{color:${s.gutter}}.gm{color:${s.more}}`
 const STRIP_TWINKLE = `.t0,.t1,.t2,.t3{animation:tw 2.2s ease-in-out infinite}.t1{animation-duration:2.8s;animation-delay:-.7s}.t2{animation-duration:1.9s;animation-delay:-1.3s}.t3{animation-duration:3.3s;animation-delay:-.4s}
 @keyframes tw{0%,100%{opacity:1}50%{opacity:.45}}
 `
 const stripStyle = (twinkle: string) => `<style>.sn{font:400 11.5px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}.sg{font-weight:500;font-variant-numeric:tabular-nums}
-${schemeCss(SCHEMES.dark)}@media (prefers-color-scheme:light){${schemeCss(SCHEMES.light)}}.gu .sn,.gm .sn{fill:currentColor}
+${capsuleCss(SCHEMES.dark)}${gutterCss(SCHEMES.dark)}@media (prefers-color-scheme:light){${gutterCss(SCHEMES.light)}}.gu .sn,.gm .sn{fill:currentColor}
 .sd{animation:sp 1.1s ease-in-out infinite}@keyframes sp{50%{opacity:.3}}
 .mi{animation:mi ${MORPH} ease-out both}@keyframes mi{from{opacity:0;filter:blur(3px)}}
 .mo{animation:mo ${MORPH} ease-in both}@keyframes mo{to{opacity:0;filter:blur(3px)}}

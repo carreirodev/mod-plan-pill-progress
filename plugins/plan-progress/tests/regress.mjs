@@ -3177,7 +3177,9 @@ const C = {
     const isDark = c => c !== undefined && luminance(c) < 0.05
     const isLight = c => c !== undefined && luminance(c) > 0.7
     if (!(isDark(schemes.dark.sb) && isLight(schemes.dark.sn))) seen.add('the dark scheme is not light text on a dark backing')
-    if (!(isLight(schemes.light.sb) && isDark(schemes.light.sn))) seen.add('the light scheme is not dark text on a light backing')
+    // C34 (1.4.3): the backing stays dark in the light scheme too, as the track's page does; the gutter, on the app's
+    // own background, still follows the scheme (checked against PAGES below)
+    if (!(isDark(schemes.light.sb) && isLight(schemes.light.sn))) seen.add('the light scheme is not light text on the dark backing')
     for (const [name, k] of Object.entries(schemes)) {
       let min = Infinity
       const check = (fg, bg, what) => {
@@ -3879,7 +3881,8 @@ const C = {
   },
   async marks_show_in_the_light_theme() {
     // in a light theme the stage capsules and step dots behind and ahead of the pill stand out from the track at 3:1
-    // (WCAG 1.4.11), on the desktop as in the dark theme, and so does the terminal's passed stage boundary
+    // (WCAG 1.4.11), and so does the terminal's passed stage boundary. Since 1.4.3 the desktop's track lays the dark
+    // page in either theme, with no rule of a theme of its own, so its marks are measured on that page alone
     const steps = n => Array.from({ length: n }, (_, i) => `S${i}`)
     const stages = () => [S('One', st('S0', 'done'), st('S1', 'done'), st('S2', 'done')), S('Two', st('S0', 'done'), st('S1', 'done'), st('S2', 'done')), S('Three', st('S0', 'done'), st('S1', 'active'), 'S2'), S('Four', ...steps(3))]
     const color = c => (c.startsWith('rgb') ? c.match(/\d+/g).map(Number) : toRgb(c))
@@ -3888,21 +3891,17 @@ const C = {
     const t = (await E.view('t')).track
     const fx = Number(t.match(/<clipPath id="fill"><rect width="([\d.]+)"/)[1])
     const grad = [...t.matchAll(/stop-color="(rgb\([^)]*\))" stop-opacity="([.\d]+)"/g)].map(m => ({ c: color(m[1]), a: Number(m[2]) }))
-    const lightCss = t.match(/@media \(prefers-color-scheme:light\)\{((?:\.[\w-]+\{[^}]*\})*)\}/)?.[1] ?? ''
-    const rules = Object.fromEntries([...lightCss.matchAll(/\.([\w-]+)\{([^}]*)\}/g)].map(m => [m[1], Object.fromEntries(m[2].split(';').map(d => d.split(':')))]))
-    const worst = { light: Infinity, dark: Infinity }
+    const page = color(t.match(/\.pg\{fill:(#[0-9A-Fa-f]{6})\}/)?.[1] ?? '#FFFFFF')
+    const isOneTheme = !t.includes('prefers-color-scheme')
+    let worst = Infinity
     let marks = 0
-    for (const [theme, page] of [['light', [255, 255, 255]], ['dark', [31, 30, 29]]]) {
-      const track = over(page, [128, 128, 128], 0.16)
-      for (const m of t.matchAll(/<(rect|circle)(?: class="([\w-]+)")? (?:x|cx)="([\d.]+)"[^>]*?fill="([^"]+)" opacity="([.\d]+)"\/>/g)) {
-        const x = Number(m[3]) + (m[1] === 'rect' ? 1.5 : 0)
-        const rule = theme === 'light' ? (rules[m[2]] ?? {}) : {}
-        const g = grad[0].a + (grad[1].a - grad[0].a) * Math.min(1, x / fx)
-        const under = x < fx ? over(track, grad[0].c, g) : track
-        const mark = over(under, color(rule.fill ?? m[4]), Number(rule.opacity ?? m[5]))
-        worst[theme] = Math.min(worst[theme], contrast(mark, under))
-        if (theme === 'light') marks++
-      }
+    const track = over(page, [128, 128, 128], 0.16)
+    for (const m of t.matchAll(/<(rect|circle) class="m[pa]" (?:x|cx)="([\d.]+)"[^>]*?fill="([^"]+)" opacity="([.\d]+)"\/>/g)) {
+      const x = Number(m[2]) + (m[1] === 'rect' ? 1.5 : 0)
+      const g = grad[0].a + (grad[1].a - grad[0].a) * Math.min(1, x / fx)
+      const under = x < fx ? over(track, grad[0].c, g) : track
+      worst = Math.min(worst, contrast(over(under, color(m[3]), Number(m[4])), under))
+      marks++
     }
     const term = await withMachine({ MAC: false, THEME: 'light' }, async () => {
       const F = await boot(file)
@@ -3915,8 +3914,8 @@ const C = {
       for (let i = 0; i < w.length; i += 3) if (String.fromCodePoint(w[i]) === '│') min = Math.min(min, contrast(q(parts(w[i + 1])), q(parts(w[i + 2]))))
       return min
     })
-    const ok = marks >= 10 && worst.light >= 3 && worst.dark >= 3 && term >= 3
-    return [`${marks} marks: worst light ${worst.light.toFixed(2)}, dark ${worst.dark.toFixed(2)}; terminal light │ ${term.toFixed(2)}`, ok]
+    const ok = marks >= 10 && isOneTheme && worst >= 3 && term >= 3
+    return [`${marks} marks: worst ${worst.toFixed(2)} on the page rgb(${page}), ${isOneTheme ? 'one theme' : 'a rule per theme'}; terminal light │ ${term.toFixed(2)}`, ok]
   },
   async step_name_reads_on_the_amber_pill(E) {
     // a bar waiting for an answer turns its pill amber, and the step name on it still reads at AA (4.5:1)
@@ -6166,7 +6165,8 @@ const C = {
     // C10: in the four states and in the light and dark themes the title reads at 4.5:1 or better against every colour
     // under it: the track over the theme's page, the fill under it, and the dots at their brightest there (the wave at
     // its peak, the flicker included). Every colour is read from the picture itself: its stylesheet, the track's tint,
-    // the fill's gradient, the dots' colour, their fades, the wave's levels and the flicker's lifts
+    // the fill's gradient, the dots' colour, their fades, the wave's levels and the flicker's lifts. Since 1.4.3 the
+    // track has no rule of the light theme, which then takes the same stylesheet as the dark one
     const color = c => (c.startsWith('rgb') ? c.match(/\d+/g).map(Number) : toRgb(c))
     const seen = []
     let ok = true
@@ -6176,7 +6176,7 @@ const C = {
       if (state !== 'running') await F.call({ id: 't', state })
       const src = trackOf(await atCols(F, 120), 'Refactor payments').source
       const s = streamOf(src)
-      const light = src.match(/@media \(prefers-color-scheme:light\)\{((?:\.[\w-]+\{[^}]*\})*)\}/)?.[1] ?? ''
+      const light = src.match(/@media \(prefers-color-scheme:light\)\{((?:\.[\w-]+\{[^}]*\})*)\}/)?.[1] ?? src
       const rule = (css, cls) => css.match(new RegExp(`\\.${cls}\\{[^}]*?fill:(#[0-9A-Fa-f]{6}|rgb\\([\\d,]+\\))`))?.[1]
       const tint = src.match(/<rect width="\d+" height="22" fill="(#[0-9A-Fa-f]{6})" fill-opacity="([.\d]+)"\/>/)
       const [, groundColor, groundOpacity] = src.match(/<linearGradient id="base"[^>]*><stop offset="0" stop-color="([^"]+)" stop-opacity="([.\d]+)"/) ?? []
@@ -6338,7 +6338,7 @@ const C = {
   },
   async light_theme_dots_keep_their_colours() {
     // C26: in the light theme the dots take the colours the 1.3.0 fill had in each state (read from that build's
-    // picture), and no rule of the light theme recolours them
+    // picture), and no rule of the light theme recolours them: since 1.4.3 the track has no rule of the light theme
     const FROZEN = { running: 'rgb(163,141,219)', needs_input: 'rgb(199,150,82)', error: 'rgb(216,118,124)', done: 'rgb(98,174,121)' }
     const seen = []
     let ok = true
@@ -6350,8 +6350,30 @@ const C = {
       const fills = [src.match(/<use href="#dt" fill="([^"]+)"\/>/)?.[1], src.match(/<g mask="url\(#kfade\)" fill="([^"]+)">/)?.[1]]
       const light = src.match(/@media \(prefers-color-scheme:light\)\{((?:\.[\w-]+\{[^}]*\})*)\}/)?.[1] ?? ''
       const selectors = [...light.matchAll(/(\.[\w-]+)\{/g)].map(m => m[1]).sort().join(' ')
-      seen.push(`${state} ${fills.join('/')}, light rules ${selectors}`)
-      ok &&= fills.every(c => c === FROZEN[state]) && selectors === '.ma .mp .pg .ti'
+      seen.push(`${state} ${fills.join('/')}, light rules ${selectors || 'none'}`)
+      ok &&= fills.every(c => c === FROZEN[state]) && selectors === ''
+    }
+    return [seen.join('; '), ok]
+  },
+  async track_page_stays_dark_in_a_light_theme() {
+    // C33 (1.4.3): the frame's light or dark is the system's, not the app's, so a light Windows under a dark VS Code
+    // drew the track white and its dots faded out. On the desktop and in VS Code, in the four states, the track lays
+    // the dark page under the title and the dots in either theme: no rule of a theme of its own, the dark page and the
+    // dark theme's ink
+    const seen = []
+    let ok = true
+    for (const surface of ['desktop', 'vscode']) {
+      for (const state of ['running', 'needs_input', 'error', 'done']) {
+        const F = await boot(file)
+        await F.call({ id: 't', title: 'Task', stages: [S('One', st('A', 'done'), st('B', 'active'), 'C'), S('Two', 'D')] })
+        if (state !== 'running') await F.call({ id: 't', state })
+        const src = trackOf(await atCols(F, 120, surface), 'Task')?.source ?? ''
+        const page = src.match(/\.pg\{fill:(#[0-9A-Fa-f]{6})\}/)?.[1]
+        const ink = src.match(/\.ti\{[^}]*?fill:(#[0-9A-Fa-f]{6})\}/)?.[1]
+        const themed = src.includes('prefers-color-scheme')
+        seen.push(`${surface} ${state} page ${page} ink ${ink}${themed ? ' themed' : ''}`)
+        ok &&= page === '#1F1E1D' && ink === '#F0EEFC' && !themed
+      }
     }
     return [seen.join('; '), ok]
   },
