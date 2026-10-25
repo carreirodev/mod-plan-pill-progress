@@ -78,7 +78,7 @@ Proof: `ONLY=finished_bar_keeps_its_title node regress.mjs`
 **C10** - Nos quatro estados e nos temas claro e escuro, o título tem contraste de pelo menos 4,5:1 contra o trilho sobre a página do tema, contra o preenchimento sob ele e contra os pontos no brilho mais forte que alcançam sob ele (onda no pico, cintilar incluído)
 Proof: `ONLY=title_reads_in_every_state_and_theme node regress.mjs`
 
-**C11** - Com 160 px ou mais de trecho do progresso, a pílula é a cápsula com o nome da etapa; com menos, é a bolinha redonda com o número da etapa, no desktop (46 e 45 colunas) e no VS Code (70 e 40 colunas)
+**C11** - Com 160 px ou mais de trecho do progresso, a pílula é a cápsula com o nome da etapa; com menos, é a bolinha redonda com o número da etapa, no desktop (46 e 45 colunas) e no VS Code fora do Windows (70 e 30 colunas)
 Proof: `ONLY=pill_name_needs_160_px_of_progress node regress.mjs`
 
 **C12** - Uma linha de agente esconde a palavra da ferramenta numa barra de 356 px e a mostra numa de 364 px: o limite de 360 px continua o mesmo
@@ -92,8 +92,11 @@ Proof: `ONLY=hover_marks_and_clock_follow_the_progress node regress.mjs`
 
 ### S2 - Linha única no VS Code · 3 files · 604 KB · ~151k
 
-**C15** - (O piso com a seta é 47 colunas: pela regra, 120 + 180 = 300 px pedem 46,15 colunas de 6,5 px. As fontes diziam 46; o autor escolheu 47 em 2026-10-25, e o design e a tarefa foram corrigidos.) Na superfície `vscode` com `bodyColumns` = N, a largura da barra mais a reserva (140 px, ou 180 px com a seta) não passa de N × 6,5 px sempre que a barra fica com 120 px ou mais (N = 40, 47 com a seta, 60, 100, 200, 300); com N = 30 a barra fica em 120 px; a divisória entre as barras nunca passa de N × 6,5 px; com `bodyColumns` = 0 vale N = 100
+**C15** - (1.4.1, renegociado com o autor em 2026-10-25: a 1.4.0 usava 6,5 px por coluna, e no VS Code do autor a barra ficou com metade da faixa, porque lá uma coluna mede cerca de 12 px.) Na superfície `vscode` com `bodyColumns` = N, uma coluna vale 12 px no Windows (instalação numa letra de unidade) e 8 px nos outros sistemas. A barra tem `floor(N × coluna)` menos a reserva (140 px, ou 180 px com a seta), até 1.400 px, sempre que isso dá 120 px ou mais; senão, fica em 120 px. A divisória entre as barras nunca passa de N colunas; com `bodyColumns` = 0 vale N = 100. Conferido nos dois sistemas, com N = 20, 30, 40, 60, 100, 200 e 0, e com a seta N = 25, 40, 60 e 100
 Proof: `ONLY=vscode_row_fits_its_columns node regress.mjs`
+
+**C30** - (1.4.1) No VS Code a barra vai sozinha na sua caixa: sem a camada de hover, sem o relógio, sem nenhuma caixa posicionada por cima de outra na faixa, e a seta de recolher é um botão de texto; o desktop continua com os três. A extensão ignora a posição absoluta e o hover, e desenhava a camada ao lado da barra, com a largura dela
+Proof: `ONLY=vscode_bar_goes_alone node regress.mjs`
 
 **C16** - No desktop a barra tem `max(120, min(1400, max(320, 8 × N) − 140 − 40 se há seta))` px, para N = 30, 100, 120 com a seta e 300
 Proof: `ONLY=desktop_row_counts_8_px_a_column node regress.mjs`
@@ -138,7 +141,7 @@ Proof: `ONLY=light_theme_dots_keep_their_colours node regress.mjs`
 Proof: `ONLY=terminal_band_is_drawn_as_in_1_3_0 node regress.mjs`
 Proof: `ONLY=terminal_bar_is_a_raster_that_fits,terminal_pill_has_round_ends_where_they_draw,terminal_track_and_strips_are_capsules_where_they_draw,terminal_animates_by_blits,narrow_terminal_row_fits_the_band,folded_bar_in_the_terminal,wide_title_keeps_its_columns,terminal_resize_draws_the_head_in_place,twinkle_off_terminal_fill_holds node regress.mjs` e `git diff b0f064f -- plugins/plan-progress/tests/regress.mjs` sem mudança nesses casos
 
-**C28** - `plugin.json` diz `1.4.0`, e os dois READMEs descrevem a linha do desktop e do VS Code como marca de estado, barra com o título dentro, porcentagem e ✕; nenhum dos dois diz mais que o preenchimento do terminal é a grade de pontos do desktop
+**C28** - `plugin.json` diz `1.4.0` ou posterior (a 1.4.1 corrigiu as larguras do VS Code), e os dois READMEs descrevem a linha do desktop e do VS Code como marca de estado, barra com o título dentro, porcentagem e ✕; nenhum dos dois diz mais que o preenchimento do terminal é a grade de pontos do desktop
 Proof: `ONLY=version_and_readmes_describe_the_new_row node regress.mjs`
 
 **C29** - Barras salvas exatamente como a 1.3.0 salva (o texto guardado, congelado no teste) voltam numa sessão retomada já com o desenho novo, e o plano restaurado é o mesmo que estava salvo, sem conversão
