@@ -8,3 +8,6 @@ plugins/plan-progress/tests/*.results.json
 
 # the step list of a task in progress, kept local
 tasks.md
+
+# the task files tlc-plan writes, kept in the planner's copy; the design they come from is versioned in .design/
+.tasks/
