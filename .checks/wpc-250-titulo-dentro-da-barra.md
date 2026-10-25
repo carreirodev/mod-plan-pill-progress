@@ -92,7 +92,7 @@ Proof: `ONLY=hover_marks_and_clock_follow_the_progress node regress.mjs`
 
 ### S2 - Linha única no VS Code · 3 files · 604 KB · ~151k
 
-**C15** - (O piso com a seta é 47 colunas, não as 46 das fontes: pela regra, 120 + 180 = 300 px pede 46,15 colunas de 6,5 px; em aberto para o autor.) Na superfície `vscode` com `bodyColumns` = N, a largura da barra mais a reserva (140 px, ou 180 px com a seta) não passa de N × 6,5 px sempre que a barra fica com 120 px ou mais (N = 40, 47 com a seta, 60, 100, 200, 300); com N = 30 a barra fica em 120 px; a divisória entre as barras nunca passa de N × 6,5 px; com `bodyColumns` = 0 vale N = 100
+**C15** - (O piso com a seta é 47 colunas: pela regra, 120 + 180 = 300 px pedem 46,15 colunas de 6,5 px. As fontes diziam 46; o autor escolheu 47 em 2026-10-25, e o design e a tarefa foram corrigidos.) Na superfície `vscode` com `bodyColumns` = N, a largura da barra mais a reserva (140 px, ou 180 px com a seta) não passa de N × 6,5 px sempre que a barra fica com 120 px ou mais (N = 40, 47 com a seta, 60, 100, 200, 300); com N = 30 a barra fica em 120 px; a divisória entre as barras nunca passa de N × 6,5 px; com `bodyColumns` = 0 vale N = 100
 Proof: `ONLY=vscode_row_fits_its_columns node regress.mjs`
 
 **C16** - No desktop a barra tem `max(120, min(1400, max(320, 8 × N) − 140 − 40 se há seta))` px, para N = 30, 100, 120 com a seta e 300
