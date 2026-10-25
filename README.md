@@ -6,8 +6,8 @@ Live progress bars above the Claude Code prompt. Claude splits a task into stage
 
 Based on plan-progress by Kirill Serditov, under the MIT license.
 
-- One row per task: on the desktop and in VS Code, state, a bar with the title inside it, percent, close button; in the terminal, state, title, bar, percent, close button
-- The pill on the bar shows the current stage and step; hover it for the time spent so far
+- One row per task: on the desktop and in VS Code, state, a bar with the title inside it and the percent in its pill, close button; in the terminal, state, title, bar, percent, close button
+- The pill on the bar shows the current stage and step and, on the desktop and in VS Code, the percent until the task is done; hover it for the time spent so far
 - Stages are capsules, steps are dots; hover a passed one to see how long it took, one ahead to see what starts there
 - A finished bar turns green, shows the total time and stays until it is closed; with `/plan-progress-autoclose` on, it leaves after `doneBarSeconds` (30 s by default, in `/config`)
 - The dots of the fill and of the subagent rows twinkle; turn `twinkle` off in `/config` to draw them still

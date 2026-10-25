@@ -6,8 +6,8 @@ Barras de progresso ao vivo acima do campo de entrada do Claude Code. O Claude d
 
 Baseado no plan-progress de Kirill Serditov, sob a licença MIT.
 
-- Uma linha por tarefa: no desktop e no VS Code, estado, a barra com o título dentro, porcentagem, botão de fechar; no terminal, estado, título, barra, porcentagem, botão de fechar
-- A etiqueta na barra mostra a etapa e o passo atuais; ao passar o mouse, o tempo decorrido
+- Uma linha por tarefa: no desktop e no VS Code, estado, a barra com o título dentro e a porcentagem na etiqueta, botão de fechar; no terminal, estado, título, barra, porcentagem, botão de fechar
+- A etiqueta na barra mostra a etapa e o passo atuais e, no desktop e no VS Code, a porcentagem até a tarefa terminar; ao passar o mouse, o tempo decorrido
 - Etapas são cápsulas e passos são pontos; ao passar o mouse sobre um já alcançado, mostra quanto tempo levou, e sobre um à frente, o que começa ali
 - Uma barra concluída fica verde, mostra o tempo total e fica até ser fechada; com `/plan-progress-autoclose` ativado, some após `doneBarSeconds` (30 s por padrão, em `/config`)
 - Os pontos do preenchimento e das linhas de subagentes cintilam; desative `twinkle` em `/config` para desenhá-los parados

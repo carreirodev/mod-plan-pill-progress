@@ -5750,9 +5750,10 @@ const C = {
     const got = hash.digest('hex').slice(0, 16)
     return [`terminal band hash ${got}`, got === '42755b970f0b007c']
   },
-  async row_is_mark_bar_percent_close() {
-    // C1: on the desktop a bar's row is its state mark, its picture, its percent, the fold arrow's cell (its arrow only
-    // where there are agents to fold) and its ✕, in that order; no Text in the row carries the title
+  async row_is_mark_bar_close() {
+    // C1: on the desktop a bar's row is its state mark, its picture, the fold arrow's cell (its arrow only where there
+    // are agents to fold) and its ✕, in that order; no Text in the row carries the title, and since 1.4.2 none carries
+    // the percent, which rides in the picture's pill
     const kindOf = n => {
       if (n.type === 'Text') {
         const text = (n.children ?? []).flat(Infinity).join('')
@@ -5780,9 +5781,9 @@ const C = {
       const same = (r, want) => r?.kinds.join() === want.join()
       const titled = [...plain, ...folded].some(r => r.texts.some(t => t.includes('Docs review') || t.includes('Refactor payments')))
       ok &&=
-        same(plain[0], ['mark', 'bar', 'percent', 'close']) &&
-        same(folded.find(r => r.key === 'bar-a'), ['mark', 'bar', 'percent', 'fold cell', 'close']) &&
-        same(folded.find(r => r.key === 'bar-b'), ['mark', 'bar', 'percent', 'fold', 'close']) &&
+        same(plain[0], ['mark', 'bar', 'close']) &&
+        same(folded.find(r => r.key === 'bar-a'), ['mark', 'bar', 'fold cell', 'close']) &&
+        same(folded.find(r => r.key === 'bar-b'), ['mark', 'bar', 'fold', 'close']) &&
         !titled
       seen.push(`${surface} alone: ${plain[0]?.kinds.join(' ')}; with agents: ${folded.map(r => `${r.key} ${r.kinds.join(' ')}`).join('; ')}; a Text with the title ${titled}`)
     }
@@ -5834,21 +5835,22 @@ const C = {
     return [`shown "${shown}" cut ${cut}; area over the zone (${area?.[2]} of ${zone}) and a tip with the whole title ${shows}; a title that fits has none ${fitting}`, cut && shows && fitting]
   },
   async narrow_bar_has_no_title_zone() {
-    // C4: where 30% of the track cannot hold "Abc…" and its margins (the desktop at 41 columns, a 188 px track) there is
-    // no title zone: no title in the picture, the fill and the marks over the whole track; at 42 columns (196 px) there
-    // is one. Either way the words start with the title
+    // C4: where 30% of the track cannot hold "Abc…" and its margins (VS Code at 30 columns of 8 px, a 184 px track) there
+    // is no title zone: no title in the picture, the fill and the marks over the whole track; at 31 columns (192 px)
+    // there is one. Either way the words start with the title. Since 1.4.2 the desktop's narrowest bar (220 px) always
+    // has one
     const seen = []
     let ok = true
-    for (const cols of [41, 42]) {
+    for (const cols of [30, 31]) {
       const F = await boot(file)
       await F.call({ id: 't', title: 'Task', stages: [S('One', st('A', 'done'), st('B', 'active'), 'C')] })
-      const track = trackOf(await atCols(F, cols), 'Task')
+      const track = trackOf(await atCols(F, cols, 'vscode'), 'Task')
       const W = track.width
       const marks = [...track.source.matchAll(/<rect class="m[pa]" x="([\d.]+)"|<circle class="m[pa]" cx="([\d.]+)"/g)].map(m => (m[1] ? Number(m[1]) + 1.5 : Number(m[2])))
       const hasTitle = titleIn(track.source) !== null
       seen.push(`${cols} columns: ${W} px, title inside ${hasTitle}, fill ${fillOf(track.source)}, marks ${marks.join('/')}`)
-      if (cols === 41) ok &&= W === 188 && !hasTitle && Math.abs(fillOf(track.source) - W / 3) <= 0.1 && Math.abs(marks[0] - W / 3) <= 0.1 && Math.abs(marks[1] - (2 * W) / 3) <= 0.1
-      else ok &&= W === 196 && titleIn(track.source)?.[2] === 'Task' && fillOf(track.source) > W / 3 + 1
+      if (cols === 30) ok &&= W === 184 && !hasTitle && Math.abs(fillOf(track.source) - W / 3) <= 0.1 && Math.abs(marks[0] - W / 3) <= 0.1 && Math.abs(marks[1] - (2 * W) / 3) <= 0.1
+      else ok &&= W === 192 && titleIn(track.source)?.[2] === 'Task' && fillOf(track.source) > W / 3 + 1
       ok &&= track.alt.startsWith('Task: ')
     }
     return [seen.join('; '), ok]
@@ -5923,7 +5925,7 @@ const C = {
     await E.press(walkAll(await E.band()), 'close-b')
     E.tick(10)
     const after = trackOf(await atCols(E, 120), 'Docs').source
-    const W = 820
+    const W = 860
     const third = z => z + (W - z) / 3
     const smallZone = (3 * fillOf(before) - W) / 2
     const glides = src => src.includes('<animate')
@@ -5938,35 +5940,35 @@ const C = {
     const src = trackOf(await atCols(E, 120), 'Task').source
     const pill = pillOf(src)
     const green = src.includes('rx="11" fill="#18883A"')
-    const ok = green && titleIn(src)?.[2] === 'Task' && Math.abs(pill.right - 820) <= 0.1 && src.includes('>2m 5s<')
+    const ok = green && titleIn(src)?.[2] === 'Task' && Math.abs(pill.right - 860) <= 0.1 && src.includes('>2m 5s<')
     return [`green ${green}, title "${titleIn(src)?.[2]}", pill ends at ${pill.right}, time ${src.includes('>2m 5s<')}`, ok]
   },
   async pill_name_needs_160_px_of_progress() {
-    // C11: from 160 px of room for the progress the pill is the capsule with the stage's name; below, the round dot with
-    // the stage's number. A long title takes its 30%: 46 columns leave 228 − 68 = 160 px, 45 columns 220 − 66 = 154
+    // C11: from 160 px of room for the progress the pill is the capsule with the stage's name; below, a 46 px pill with
+    // the percent alone (the round dot with the stage's number until 1.4.2). A long title takes its 30%: 41 columns
+    // leave 228 − 68 = 160 px, 40 columns 220 − 66 = 154
     const long = 'Refactor the payment service and all of its tests'
+    const named = src => /<rect x="-[\d.]+" y="0" width="[\d.]+" height="22" rx="11"[^>]*\/>.*?>Build</.test(src)
+    const percentOnly = src => /<rect x="-23" y="0" width="46" height="22" rx="11"[^>]*\/><text[^>]*class="kt kn">0%<\/text>/.test(src)
     const seen = []
     let ok = true
-    for (const cols of [46, 45]) {
+    for (const cols of [41, 40]) {
       const F = await boot(file)
       await F.call({ id: 't', title: long, stages: [S('Build', st('A', 'active'), 'B'), S('Ship', 'C')] })
       const track = trackOf(await atCols(F, cols), long)
       const run = track.width - fillOf(track.source)
-      const named = /<rect x="-[\d.]+" y="0" width="[\d.]+" height="22" rx="11"[^>]*\/>.*?>Build</.test(track.source)
-      const dot = /<circle cx="0" cy="11" r="11"[^>]*\/><text[^>]*>1<\/text>/.test(track.source)
-      seen.push(`${cols} columns: ${run} px of progress, name ${named}, round dot ${dot}`)
-      ok &&= run >= 160 ? named && !dot : dot && !named
+      seen.push(`${cols} columns: ${run} px of progress, name ${named(track.source)}, percent alone ${percentOnly(track.source)}`)
+      ok &&= run >= 160 ? named(track.source) && !percentOnly(track.source) : percentOnly(track.source) && !named(track.source)
     }
-    // the same rule in VS Code (8 px a column off Windows): a 70-column panel leaves the pill its name, a 30-column one the round dot
-    for (const cols of [70, 30]) {
+    // the same rule in VS Code (8 px a column off Windows): a 70-column panel leaves the pill its name, a 32-column one
+    // the percent alone
+    for (const cols of [70, 32]) {
       const F = await boot(file)
       await F.call({ id: 't', title: long, stages: [S('Build', st('A', 'active'), 'B'), S('Ship', 'C')] })
       const track = trackOf(await atCols(F, cols, 'vscode'), long)
       const run = track.width - fillOf(track.source)
-      const named = /<rect x="-[\d.]+" y="0" width="[\d.]+" height="22" rx="11"[^>]*\/>.*?>Build</.test(track.source)
-      const dot = /<circle cx="0" cy="11" r="11"[^>]*\/><text[^>]*>1<\/text>/.test(track.source)
-      seen.push(`VS Code ${cols} columns: ${run} px of progress, name ${named}, round dot ${dot}`)
-      ok &&= cols === 70 ? run >= 160 && named && !dot : run < 160 && dot && !named
+      seen.push(`VS Code ${cols} columns: ${run} px of progress, name ${named(track.source)}, percent alone ${percentOnly(track.source)}`)
+      ok &&= cols === 70 ? run >= 160 && named(track.source) && !percentOnly(track.source) : run < 160 && percentOnly(track.source) && !named(track.source)
     }
     return [seen.join('; '), ok && /: 160 px/.test(seen[0]) && /: 15\d px/.test(seen[1])]
   },
@@ -5976,7 +5978,7 @@ const C = {
     await E.spawn('ag1', 'Scan routes')
     await E.agentTool('ag1', 'Grep')
     const seen = []
-    for (const cols of [67, 68]) {
+    for (const cols of [62, 63]) {
       const svgs = await atCols(E, cols)
       const strip = svgs.find(s => String(s.key ?? '').startsWith('strip-t-'))
       seen.push([trackOf(svgs, 'Task').width, strip.width, strip.source.includes('>Grep<')])
@@ -6015,18 +6017,18 @@ const C = {
     return [`zone ${zone.toFixed(1)}; areas ${areas.map(([k, m]) => `${k}@${m.toFixed(1)}`).join(' ')} with tips ${placed}; clock at ${clockAt}, pill at ${pillOf(v.track).x}`, ok]
   },
   async vscode_row_fits_its_columns() {
-    // C15 (1.4.1): in VS Code (bodyColumns N) a column is 12 px on Windows (an install on a drive letter) and 8 px
-    // elsewhere. The bar takes all of N columns but the rest of its row (140 px, 180 with the fold arrow), at most 1400
-    // px, wherever that leaves it 120 px or more; else it keeps 120 px. The line between bars never runs past N columns;
-    // bodyColumns 0 counts as 100
+    // C15 (1.4.2): in VS Code (bodyColumns N) a column is 10 px on Windows (an install on a drive letter) and 8 px
+    // elsewhere. The bar takes all of N columns but the rest of its row (7 columns: the mark, two gaps and the ✕; 13 with
+    // the fold arrow's cell and its gap), at most 1400 px, wherever that leaves it 120 px or more; else it keeps 120 px.
+    // The line between bars never runs past N columns; bodyColumns 0 counts as 100
     const seen = []
     let ok = true
-    for (const [system, root, px] of [['Windows', 'C:\\Users\\x\\.claude\\plugins\\cache\\plan-progress', 12], ['elsewhere', undefined, 8]]) {
+    for (const [system, root, px] of [['Windows', 'C:\\Users\\x\\.claude\\plugins\\cache\\plan-progress', 10], ['elsewhere', undefined, 8]]) {
       const held = globalThis.ROOT
       if (root) globalThis.ROOT = root
       try {
-        const room = (n, reserve) => Math.floor((n || 100) * px) - reserve
-        const want = (n, reserve) => (room(n, reserve) >= 120 ? Math.min(1400, room(n, reserve)) : 120)
+        const room = (n, rest) => Math.floor((n || 100) * px) - rest * px
+        const want = (n, rest) => (room(n, rest) >= 120 ? Math.min(1400, room(n, rest)) : 120)
         const F = await boot(file)
         await create(F, 'a', three(), 'Docs')
         await create(F, 'b', three(), 'Refactor payments')
@@ -6035,7 +6037,7 @@ const C = {
           const W = trackOf(svgs, 'Docs').width
           const line = svgs.find(s => s.alt === 'divider').width
           seen.push(`${system} ${n}: bar ${W}, line ${line}`)
-          ok &&= W === want(n, 140) && line <= (n || 100) * px && (W === 120 || W + 140 <= (n || 100) * px)
+          ok &&= W === want(n, 7) && line <= (n || 100) * px && (W === 120 || W + 7 * px <= (n || 100) * px)
         }
         const G = await boot(file)
         await create(G)
@@ -6043,7 +6045,7 @@ const C = {
         for (const n of [25, 40, 60, 100]) {
           const W = trackOf(await atCols(G, n, 'vscode'), 'Task').width
           seen.push(`${system} ${n} with the arrow: bar ${W}`)
-          ok &&= W === want(n, 180) && (W === 120 || W + 180 <= n * px)
+          ok &&= W === want(n, 13) && (W === 120 || W + 13 * px <= n * px)
         }
       } finally {
         if (root) {
@@ -6078,9 +6080,73 @@ const C = {
     const ok = code.pictures === 1 && !code.interactive && !code.placed && !code.clock && code.fold === '⌃' && desk.pictures === 3 && desk.interactive && desk.placed && desk.clock && desk.fold !== undefined && unpadded(desk.fold) === ''
     return [`VS Code: ${code.pictures} picture in the track, hover layer ${code.interactive}, placed Boxes ${code.placed}, clock ${code.clock}, fold "${code.fold}"; desktop: ${desk.pictures} pictures, hover layer ${desk.interactive}, placed Boxes ${desk.placed}, clock ${desk.clock}, fold "${desk.fold}"`, ok]
   },
+  async pill_carries_the_percent_until_done() {
+    // C31 (1.4.2): the percent rides at the pill's right end, the same figure the words give, while the plan runs, waits
+    // and has failed, and in the copy of the pill that shows the clock. Where the progress is short the pill holds the
+    // percent alone. A finished bar's pill shows the time it took and no percent, short or not. The percent's room holds
+    // two figures, so the pill is as wide at 5% as at 50%
+    const pctIn = src => src?.match(/class="kt kp kn">(\d+%)<\/text>/)?.[1]
+    const aloneIn = src => src.match(/<rect x="-23" y="0" width="46" height="22" rx="11"[^>]*\/><text[^>]*class="kt kn">(\d+%)<\/text>/)?.[1]
+    const anyPct = src => />\d+%</.test(src)
+    const seen = []
+    let ok = true
+    const F = await boot(file)
+    await F.call({ id: 't', title: 'Refactor payments', stages: [S('One', st('A', 'done'), st('B', 'active')), S('Two', 'C', 'D')] })
+    for (const state of ['running', 'needs_input', 'error']) {
+      if (state !== 'running') await F.call({ id: 't', state })
+      const v = await F.view('t')
+      const words = v.alt.match(/\d+%/)?.[0]
+      seen.push(`${state}: pill ${pctIn(v.track)}, clock's copy ${pctIn(v.clock)}, words ${words}`)
+      ok &&= words === '25%' && pctIn(v.track) === words && pctIn(v.clock) === words
+    }
+    await F.call({ id: 't', state: 'done' })
+    const done = (await F.view('t')).track
+    seen.push(`done: a percent ${anyPct(done)}`)
+    ok &&= !anyPct(done)
+    // short progress: VS Code at 32 columns of 8 px with a long title leaves under 160 px
+    const long = 'Refactor the payment service and all of its tests'
+    const G = await boot(file)
+    await G.call({ id: 't', title: long, stages: [S('One', st('A', 'done'), st('B', 'active')), S('Two', 'C', 'D')] })
+    const short = trackOf(await atCols(G, 32, 'vscode'), long).source
+    await G.call({ id: 't', state: 'done' })
+    const shortDone = trackOf(await atCols(G, 32, 'vscode'), long).source
+    const dot = /<circle cx="0" cy="11" r="11"/.test(shortDone)
+    seen.push(`short: alone ${aloneIn(short)}; done: round dot ${dot}, a percent ${anyPct(shortDone)}`)
+    ok &&= aloneIn(short) === '25%' && dot && !anyPct(shortDone)
+    // the same stage and steps of one width, at 5% and at 50%
+    const H = await boot(file)
+    const steps = Array.from({ length: 20 }, (_, i) => `S${String(i + 1).padStart(2, '0')}`)
+    const widths = []
+    for (const n of [1, 10]) {
+      await H.call({ id: 't', title: 'Task', stages: [S('Build', ...steps.map((x, i) => st(x, i < n ? 'done' : i === n ? 'active' : 'pending')))] })
+      const v = await H.view('t')
+      widths.push([pctIn(v.track), pillOf(v.track).w])
+    }
+    seen.push(`widths ${widths.map(([p, w]) => `${p} ${w}`).join(', ')}`)
+    ok &&= widths[0][0] === '5%' && widths[1][0] === '50%' && widths[0][1] === widths[1][1]
+    return [seen.join('; '), ok]
+  },
+  async vscode_row_cannot_break() {
+    // C32 (1.4.2): VS Code breaks a row that runs past its band, which put the ✕ (and, until 1.4.2, the percent) under
+    // the bar where its columns ran narrower than the mod reckoned. The bar's row cannot break, and in VS Code the bar's
+    // column may shrink (flexShrink 1, minWidth 0), so the picture gives way instead; the desktop keeps that column as
+    // wide as the picture
+    const look = async (F, surface) => {
+      const row = walkAll(await F.band(surface)).find(n => n.type === 'Box' && n.props.key === 'bar-t')
+      const column = (row.children ?? []).flat(Infinity).find(c => c?.type === 'Box' && walkAll(c).some(k => k.props?.key === 'track-t'))
+      return { wrap: row.props.flexWrap, shrink: column?.props.flexShrink, min: column?.props.minWidth }
+    }
+    const F = await boot(file)
+    await create(F)
+    const code = await look(F, 'vscode')
+    const desk = await look(F, 'desktop')
+    const ok = code.wrap === 'nowrap' && code.shrink === 1 && code.min === 0 && desk.wrap === 'nowrap' && desk.shrink === 0 && desk.min === undefined
+    return [`VS Code: wrap ${code.wrap}, the bar's column shrinks ${code.shrink}, min width ${code.min}; desktop: wrap ${desk.wrap}, shrinks ${desk.shrink}, min width ${desk.min}`, ok]
+  },
   async desktop_row_counts_8_px_a_column() {
-    // C16: on the desktop the bar is max(120, min(1400, max(320, 8 × N) − 140 − 40 with the fold arrow)) px
-    const want = (n, fold) => Math.max(120, Math.min(1400, Math.max(320, 8 * n) - 140 - (fold ? 40 : 0)))
+    // C16: on the desktop the bar is max(120, min(1400, max(320, 8 × N) − 100 − 40 with the fold arrow)) px: since 1.4.2
+    // the percent rides in its pill, and the 40 px it took beside the bar go to the bar
+    const want = (n, fold) => Math.max(120, Math.min(1400, Math.max(320, 8 * n) - 100 - (fold ? 40 : 0)))
     const seen = []
     let ok = true
     const F = await boot(file)
@@ -6304,20 +6370,20 @@ const C = {
     return [`restored as saved ${same}, titles inside the bars ${inside}, a title as text ${outside}`, same && inside && !outside]
   },
   async version_and_readmes_describe_the_new_row(E) {
-    // C28: the manifest says 1.4.0, and both READMEs describe the desktop's and VS Code's row as the state mark, the bar
-    // with the title inside, the percent and the close button; neither says any more that the terminal's fill is the
-    // desktop's grid of dots
+    // C28: the manifest says 1.4.2 or later, and both READMEs describe the desktop's and VS Code's row as the state mark,
+    // the bar with the title inside and the percent in its pill, and the close button; neither says any more that the
+    // terminal's fill is the desktop's grid of dots
     void E
     const read = path => readFileSync(new URL(path, import.meta.url), 'utf8')
     const version = JSON.parse(read('../.claude-plugin/plugin.json')).version
     const en = read('../../../README.md')
     const pt = read('../../../README.pt-BR.md')
-    const rowEn = en.split('\n').find(l => /desktop and in VS Code.*\bstate\b.*\bbar with the title inside\b.*\bpercent\b.*\bclose button\b/.test(l))
-    const rowPt = pt.split('\n').find(l => /desktop e no VS Code.*\bestado\b.*\bbarra com o título dentro\b.*\bporcentagem\b.*\bfechar\b/.test(l))
+    const rowEn = en.split('\n').find(l => /desktop and in VS Code.*\bstate\b.*\bbar with the title inside\b.*\bpercent in its pill\b.*\bclose button\b/.test(l))
+    const rowPt = pt.split('\n').find(l => /desktop e no VS Code.*\bestado\b.*\bbarra com o título dentro\b.*\bporcentagem na etiqueta\b.*\bfechar\b/.test(l))
     const grid = /grid of dots/i.test(en) || /grade de pontos/i.test(pt)
-    // 1.4.0 brought the new row; a later release (1.4.1 fixed VS Code's widths) keeps it
-    const [major, minor] = version.split('.').map(Number)
-    const atLeast = major > 1 || (major === 1 && minor >= 4)
+    // 1.4.2 put the percent in the pill; a later release keeps it
+    const [major, minor, patch] = version.split('.').map(Number)
+    const atLeast = major > 1 || (major === 1 && (minor > 4 || (minor === 4 && patch >= 2)))
     return [`version ${version}; row in English ${!!rowEn}, in Portuguese ${!!rowPt}; a grid of dots still named ${grid}`, atLeast && !!rowEn && !!rowPt && !grid]
   },
   async dollar_goes_only_to_top_level_functions(E) {

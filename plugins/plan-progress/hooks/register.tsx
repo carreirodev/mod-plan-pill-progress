@@ -73,12 +73,19 @@ const NARROW = 360
 // The fill, the marks and the pill run from the end of that zone to the track's right end
 const TITLE_PAD = 12
 const TITLE_SHARE = 0.3
-// the pill names its stage from this much room for the progress on; below it, it is a round dot with the stage number
+// the pill names its stage from this much room for the progress on; below it, it holds the percent alone
 const PILL_NAME_W = 160
+// the percent rides at the pill's right end until the plan is done: room for two figures and the sign at 11 px, past a
+// gap, so the pill keeps its width as the figure changes (a running plan stops at 99%). A pill that holds the percent
+// alone is PCT_PILL_W wide
+const PCT_W = 24
+const PCT_GAP = 8
+const PCT_PILL_W = 46
 // VS Code counts the band's columns by the wider of "0" and "─" in its panel's font, and breaks a row that does not
-// fit. The "─" comes from a fallback font: wide on Windows (about 12 px a column on the author's machine), narrower
-// elsewhere (about 8 px, not measured). The row is sized at that much a column
-const VSCODE_COL_PX = { windows: 12, other: 8 }
+// fit. The "─" comes from a fallback font: about 10 px a column on the author's Windows machine (measured from a
+// screenshot, 2026-10-25), narrower elsewhere (about 8 px, not measured). The row is sized at that much a column, and
+// cannot break: a column narrower than this only shrinks the bar
+const VSCODE_COL_PX = { windows: 10, other: 8 }
 
 const RULES = `# Progress bars
 Tasks needing more than ~3 edits or commands get a bar via ${TOOL}: create it once with the full breakdown (2-7 stages of steps {title}, or kind "todo" for one flat list; titles of at most 4 words, in the user's language; the first open step becomes active), then move it with short calls: {id, next:true} when the active step is finished, or {id, done:[...], active:"..."}, {id, failed:"...", note}. When the plan changes, resend stages under the same id and title; steps sent without a status keep their done by title. Send state "needs_input" with a note before asking the user to decide. Never describe the bars to the user.`
@@ -937,28 +944,31 @@ function drawTrack(p: Plan, W: number, zone = 0, now = 0): Track {
     tipRules.push('.hz:hover~.pz')
   }
 
-  // knob: a pill with stage and count, or a round dot with the stage number when the progress is short
+  // knob: a pill with stage, step and percent, or one with the percent alone when the progress is short; a finished
+  // bar's short one is the round dot with its check. The percent stays until the plan is done
   const isNarrow = run < PILL_NAME_W
   const color = stateColor(p.state)
   const icon = ICON_PATH[p.state]
   const single = p.stages.length === 1
-  const number = single ? w.step : w.stage + 1
+  const pct = done ? '' : `${percent(p, w)}%`
   let knob = ''
   let timePill = ''
   let kw = H
-  if (isNarrow) {
-    const label = done ? '' : String(number)
-    knob = `<circle cx="0" cy="${H / 2}" r="${H / 2}" fill="${color}"/>${
-      done ? `<path d="${ICON_PATH.done}" transform="translate(-6 5) scale(.5)" fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>` : `<text x="0" y="${H / 2 + 4.2}" text-anchor="middle" class="kt">${label}</text>`
-    }`
+  if (isNarrow && done) {
+    knob = `<circle cx="0" cy="${H / 2}" r="${H / 2}" fill="${color}"/><path d="${ICON_PATH.done}" transform="translate(-6 5) scale(.5)" fill="none" stroke="${INK}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`
+  } else if (isNarrow) {
+    kw = PCT_PILL_W
+    knob = `<rect x="${-kw / 2}" y="0" width="${kw}" height="${H}" rx="${H / 2}" fill="${color}"/><text x="0" y="${H / 2 + 4.2}" text-anchor="middle" class="kt kn">${pct}</text>`
   } else {
     const name = done ? (p.endedAt ? elapsed(p.endedAt - p.startedAt) : 'Done') : single ? (p.stages[0]?.name ?? 'Tasks') : (p.stages[w.stage]?.name ?? '')
-    // the pill carries the stage name and, past a thin line, the step at its place (the fill and the percent
-    // already say how far along it is); folded agents stay folded, the pill does not count them
+    // the pill carries the stage name and, past a thin line, the step at its place, then the percent; folded agents
+    // stay folded, the pill does not count them
     const iconW = icon ? 16 : 0
-    // at most about half a short progress, and never so wide on a long one that it hides the marks around it
-    const maxW = Math.max(80, Math.min(run * 0.55, 320))
-    const room = maxW - (20 + iconW)
+    const pctW = pct ? PCT_GAP + PCT_W : 0
+    // at most about half a short progress and the percent, and never so wide on a long one that it hides the marks
+    // around it: there the names make room for the percent, which is never cut
+    const maxW = Math.max(80 + pctW, Math.min(run * 0.55 + pctW, 320))
+    const room = maxW - (20 + iconW + pctW)
     // the step is set a size smaller and lighter than the stage, past a thin line
     const stageWidth = (text: string) => labelWidth(text)
     const stepWidth = (text: string) => labelWidth(text, 11, false)
@@ -970,10 +980,12 @@ function drawTrack(p: Plan, W: number, zone = 0, now = 0): Track {
     const shownW = stageWidth(shown) + (step ? sepW + stepWidth(step) : 0)
     // a running pill is wide enough for its clock too, so the hover swap does not change its size
     const textW = done ? shownW : Math.max(shownW, CLOCK_W)
-    const contentW = iconW + textW
+    const contentW = iconW + textW + pctW
     kw = Math.round(20 + contentW)
     const left = -contentW / 2
     const mid = left + iconW + textW / 2
+    // the percent ends where the text does, at the pill's right margin, in figures of one width
+    const pctText = pct ? `<text x="${(contentW / 2).toFixed(1)}" y="${(H / 2 + 3.9).toFixed(1)}" text-anchor="end" class="kt kp kn">${pct}</text>` : ''
     knob = `<rect x="${-kw / 2}" y="0" width="${kw}" height="${H}" rx="${H / 2}" fill="${color}"/>`
     if (icon) knob += `<path d="${icon}" transform="translate(${left.toFixed(1)} 5) scale(.5)" fill="none" stroke="${INK}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>`
     // the separator is the mark the pill stands on: a stage's capsule at a stage's first step, a step's dot past it
@@ -990,12 +1002,14 @@ function drawTrack(p: Plan, W: number, zone = 0, now = 0): Track {
         sepMark(line + 7.5) +
         `<text x="${(line + sepW).toFixed(1)}" y="${(H / 2 + 3.9).toFixed(1)}" class="kt kp">${esc(step)}</text>`
     } else knob += `<text x="${mid.toFixed(1)}" y="${H / 2 + 4.2}" text-anchor="middle" class="kt">${esc(shown)}</text>`
-    // hovering the track lays a copy of the pill over it, the stage name giving way to the time the plan has run so far
+    knob += pctText
+    // hovering the track lays a copy of the pill over it, the stage name giving way to the time the plan has run so far;
+    // the percent stays
     if (!done) {
       const face = `<rect x="${-kw / 2}" y="0" width="${kw}" height="${H}" rx="${H / 2}" fill="${color}"/>${
         icon ? `<path d="${icon}" transform="translate(${left.toFixed(1)} 5) scale(.5)" fill="none" stroke="${INK}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>` : ''
       }`
-      timePill = `${face}${liveClock(mid - CLOCK_W / 2, 3, p.startedAt, 'kc0', 'kt', true)}`
+      timePill = `${face}${liveClock(mid - CLOCK_W / 2, 3, p.startedAt, 'kc0', 'kt', true)}${pctText}`
     }
   }
   // the pill stays on the progress: at the start it stands just past the title zone, never over it
@@ -1015,7 +1029,7 @@ ${FLICKER_CSS}
 `
   const style = `<style>
 ${isTwinkling ? motion : ''}.kt{font:500 12px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:${INK}}
-.kp{font-size:11px;font-weight:400}
+.kp{font-size:11px;font-weight:400}.kn{font-variant-numeric:tabular-nums}
 .ti{font:500 12px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:${SCHEMES.dark.ink}}.pg{fill:${SCHEMES.dark.page}}
 @media (prefers-color-scheme:light){.mp{fill:${rgb(mix(acc, [0, 0, 0], 0.3))};opacity:1}.ma{fill:${SCHEMES.light.gutter};opacity:1}.ti{fill:${SCHEMES.light.ink}}.pg{fill:${SCHEMES.light.page}}}
 ${STILL_CSS}@media (prefers-reduced-motion:reduce){.wm,[class^="q"]{animation:none}${STILL_REDUCED}}
@@ -1051,7 +1065,7 @@ ${pill}</svg>`
   // the pill's copy with its clock, for the desktop to show over the track while the pointer is on it. Shown at any
   // moment, so it glides with the pill (the same glide and offset, and the same still copy for reduced motion) rather
   // than standing at the new place while the pill slides in under it
-  const clockStyle = `<style>.kt{font:500 12px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:${INK}}${CLOCK_CSS}
+  const clockStyle = `<style>.kt{font:500 12px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:${INK}}.kp{font-size:11px;font-weight:400}.kn{font-variant-numeric:tabular-nums}${CLOCK_CSS}
 ${STILL_CSS}@media (prefers-reduced-motion:reduce){${STILL_REDUCED}}</style>`
   const clockPill = glideKnob ? `<g class="mv" ${place}>${glideKnob}${timePill}</g><g class="sv" ${place}>${timePill}</g>` : `<g ${place}>${timePill}</g>`
   const clock = timePill ? `${open}${clockStyle}${clockPill}</svg>` : ''
@@ -3841,10 +3855,10 @@ export const register: Register = (on, options) => {
     const t = $.ui.resolve(e)
     const { Box, Button, Text } = t
     const Svg = 'Svg' in t ? t.Svg : null
-    // every bar has the same width, its title inside it, and takes all the row has after the glyph, the percent and
-    // the close button (~126 px), so rows line up. The desktop reports ~8 CSS px per column; VS Code's columns are as
-    // wide as its system's VSCODE_COL_PX (a Windows install sits on a drive letter), and it breaks a row that runs past
-    // the band, so there no floor takes the row past it
+    // every bar has the same width, its title and percent inside it, and takes all the row has after the glyph and the
+    // close button, so rows line up. The desktop reports ~8 CSS px per column; VS Code's columns are as wide as its
+    // system's VSCODE_COL_PX (a Windows install sits on a drive letter), and it would break a row that runs past the
+    // band, so there no floor takes the row past it, and the row is told not to break
     const isVscode = e.surface === 'vscode'
     const colPx = /^[A-Za-z]:/.test($.plugin.root) ? VSCODE_COL_PX.windows : VSCODE_COL_PX.other
     const cols = e.props.bodyColumns || 100
@@ -3858,7 +3872,11 @@ export const register: Register = (on, options) => {
     // a bar with agent strips gets a fold chevron before its ✕ (up folds, down shows), in a cell every row keeps so
     // the rows line up; wide enough for the desktop's own button, which a narrower cell squeezes to a dot
     const hasFold = list.some(p => canFold(p, now, stripBudget(list.length)))
-    const trackW = Math.max(120, Math.min(1400, total - 140 - (hasFold ? 40 : 0)))
+    // the rest of the row: on the desktop the glyph and the ✕ (~86 px), and the percent beside them where no picture
+    // holds it; in VS Code, where gaps and cells are its own columns, the glyph, two gaps and the ✕ take 7 columns. The
+    // fold arrow's cell takes 40 px, or its 5 columns and a gap
+    const rest = isVscode ? (7 + (hasFold ? 6 : 0)) * colPx : (Svg ? 100 : 140) + (hasFold ? 40 : 0)
+    const trackW = Math.max(120, Math.min(1400, total - rest))
     const zone = titleZone(list, trackW)
     // a hairline between task bars, so each bar and its agent strips read as one group
     const divider = `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="1"><rect width="${total}" height="1" fill="#808080" fill-opacity=".22"/></svg>`
@@ -3903,13 +3921,15 @@ export const register: Register = (on, options) => {
 
           return [
             ...line,
-            <Box key={`bar-${p.id}`} flexDirection="row" alignItems={v ? 'flex-start' : 'center'} gap={1}>
+            <Box key={`bar-${p.id}`} flexDirection="row" flexWrap="nowrap" alignItems={v ? 'flex-start' : 'center'} gap={1}>
               <Text color={color}>{STATE_GLYPH[p.state]}</Text>
               {/* the title is in the picture; a surface that draws none keeps it as text, the bar pinned right */}
               {Svg ? null : <Text wrap="truncate">{p.title}</Text>}
               {Svg ? null : <Box flexGrow={1} />}
               {Svg ? (
-                <Box flexDirection="column" flexShrink={0}>
+                // in VS Code the row cannot break, so where its columns run narrower than VSCODE_COL_PX this column
+                // gives way and the pictures in it shrink to fit (an image there is at most as wide as its box)
+                <Box flexDirection="column" flexShrink={isVscode ? 1 : 0} minWidth={isVscode ? 0 : undefined}>
                   <Box key={`track-${p.id}`}>
                     <Svg source={liveSource(track.base, now)} alt={alt} width={trackW} height={TRACK_H} />
                     {/* VS Code places no Box absolutely, shows no hover and draws a picture as a plain image: there the
@@ -3939,7 +3959,8 @@ export const register: Register = (on, options) => {
                   <Text color={color}>{` ${stageName} ${w.step}/${w.stageSize}`}</Text>
                 </Text>
               )}
-              <Text dimColor>{`${String(pct).padStart(3, FIGURE_SPACE)}%`}</Text>
+              {/* the picture carries the percent in its pill */}
+              {Svg ? null : <Text dimColor>{`${String(pct).padStart(3, FIGURE_SPACE)}%`}</Text>}
               {hasFold ? (
                 <Box width={5} flexShrink={0}>
                   {canFold(p, now, stripBudget(list.length)) ? (
