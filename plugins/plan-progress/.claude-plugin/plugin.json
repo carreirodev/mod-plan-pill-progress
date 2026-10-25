@@ -1,6 +1,6 @@
 {
   "name": "plan-progress",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Live plan progress bars above the Claude Code prompt: stages, steps, a pixel fill and soft sounds for decision, error and done",
   "author": {
     "name": "carreirodev",
@@ -22,6 +22,12 @@
       "title": "Twinkle the pixel fill",
       "description": "Animate the dots of the progress fill and of the agent rows. Off, they are drawn still; clocks, glides and status dots still move",
       "default": true
+    },
+    "hideAgentRows": {
+      "type": "boolean",
+      "title": "Hide Claude Code's rows of the agents the bars show",
+      "description": "Terminal only. On, the mod adds subagentStatusLine to your Claude Code settings.json (unless you set one), and Claude Code's own agent list under the prompt leaves out the agents a bar's strips show. Off, the mod takes that line out again",
+      "default": false
     }
   },
   "types": "./types/index.d.ts"
