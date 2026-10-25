@@ -66,7 +66,18 @@ const dimOn = (bg: number[], c: number[]) =>
 const STATE_GLYPH: Record<PlanState, string> = { running: '●', needs_input: '?', error: '!', done: '✓' }
 const STATUSES: StepStatus[] = ['pending', 'active', 'done', 'error', 'skipped']
 const TRACK_H = 22
+// below this a strip leaves out its tool word
 const NARROW = 360
+// on the desktop and in VS Code the plan's title sits inside the track, at its left, in a zone of its own: TITLE_PAD
+// either side of the text, as wide as the longest title of the bars shown asks, and at most TITLE_SHARE of the track.
+// The fill, the marks and the pill run from the end of that zone to the track's right end
+const TITLE_PAD = 12
+const TITLE_SHARE = 0.3
+// the pill names its stage from this much room for the progress on; below it, it is a round dot with the stage number
+const PILL_NAME_W = 160
+// VS Code counts the band's columns in the advance of its editor font, often narrower than the desktop's 8 px, and
+// breaks a row that does not fit: there the row is sized at less, and a little room left after the ✕ costs nothing
+const VSCODE_COL_PX = 6.5
 
 const RULES = `# Progress bars
 Tasks needing more than ~3 edits or commands get a bar via ${TOOL}: create it once with the full breakdown (2-7 stages of steps {title}, or kind "todo" for one flat list; titles of at most 4 words, in the user's language; the first open step becomes active), then move it with short calls: {id, next:true} when the active step is finished, or {id, done:[...], active:"..."}, {id, failed:"...", note}. When the plan changes, resend stages under the same id and title; steps sent without a status keep their done by title. Send state "needs_input" with a note before asking the user to decide. Never describe the bars to the user.`
@@ -431,10 +442,11 @@ const glyphW = (ch: string) =>
   : /[A-ZА-ЯЁ]/.test(ch) ? 7.6
   : 6.3
 const labelWidth = (s: string, size = 12, isBold = true) => (([...s].reduce((w, ch) => w + glyphW(ch), 0) * size) / 12) * (isBold ? 1 : 0.96) * 1.06
-// a label cut to width, as labelWidth measures it, then given an ellipsis; at least three characters stay. It drops
-// whole grapheme clusters, so an emoji is never split into a lone half (which shows as "�" and breaks the picture's
-// encoding), and takes each one's width off as it goes, so a long label costs one pass and not one measure a letter
-const fitLabel = (s: string, width: number, size = 12, isBold = true) => {
+// a label cut to width, as labelWidth measures it, then given an ellipsis; at least `least` characters stay (three
+// unless asked). It drops whole grapheme clusters, so an emoji is never split into a lone half (which shows as "�" and
+// breaks the picture's encoding), and takes each one's width off as it goes, so a long label costs one pass and not one
+// measure a letter
+const fitLabel = (s: string, width: number, size = 12, isBold = true, least = 3) => {
   if (labelWidth(s, size, isBold) <= width) return s
   const scale = (size / 12) * (isBold ? 1 : 0.96) * 1.06
   const parts = clusters(s).map(c => ({ c, w: [...c].reduce((sum, ch) => sum + glyphW(ch), 0) * scale }))
@@ -442,7 +454,7 @@ const fitLabel = (s: string, width: number, size = 12, isBold = true) => {
   let n = parts.length
   // the ellipsis takes its own room, so the cut label with it still fits
   const room = width - glyphW('…') * scale
-  while (n > 3 && w > room) w -= parts[--n]?.w ?? 0
+  while (n > least && w > room) w -= parts[--n]?.w ?? 0
   return n === parts.length ? s : parts.slice(0, n).map(x => x.c).join('').trimEnd() + '…'
 }
 // the text without its last grapheme cluster, for the cuts measured with textWidth
@@ -499,6 +511,10 @@ const SPARK_SHARE = 0.35
 // later and steeper, so it sparkles at the head and thins out on its way to the start
 const STREAM_FADE: [number, number][] = [[0, 0], [0.67, 1], [1, 1]]
 const FLICKER_FADE: [number, number][] = [[0, 0], [0.15, 0], [0.5, 0.45], [0.8, 0.9], [1, 1]]
+// the desktop's fill runs along the progress alone and never fades to nothing: its dots stand at FILL_FAINT of their
+// brightness where the progress starts, and under the title all along, so the title reads over them at AA
+const FILL_FAINT = 0.5
+const FILL_FADE: [number, number][] = [[0, FILL_FAINT], [0.67, 1], [1, 1]]
 // mixed better than hash for the few hundred values the stream takes: with it the wave comes out as it was measured
 // against the slider
 const streamHash = (a: number, b: number, k: number) => {
@@ -657,8 +673,9 @@ function thin<T>(marks: Mark<T>[], size: (item: T) => number, budget: number): T
 }
 
 // last drawn head position per plan, so a redraw glides from where the bar was; from and at are the glide that led
-// there (from === x when it stood), so a redraw before it has run keeps it going instead of drawing it arrived
-const lastHead = new Map<string, { W: number; x: number; from: number; at: number }>()
+// there (from === x when it stood), so a redraw before it has run keeps it going instead of drawing it arrived. The
+// width and the title zone it was drawn at go with it: drawn at others, the place means another one
+const lastHead = new Map<string, { W: number; zone: number; x: number; from: number; at: number }>()
 // where each bar's wave got to (cols, in columns) when it last changed speed (at): a bar coming to rest, or set going
 // again, streams on from there at its new speed. Timed from the start at the new speed instead, the wave would jump to
 // wherever that speed had brought it
@@ -760,36 +777,47 @@ function settleBy($: EngineInterface, at: number, now: number) {
 }
 // kept per bar id with what the track shows of the plan: $.state hands back a fresh copy on every read, so a plan
 // object is never seen twice and could not key the drawings itself
-const drawn = new Map<string, { sig: string; W: number; color: string; track: Track; glideUntil: number }>()
-const trackSig = (p: Plan) => JSON.stringify([p.state, p.startedAt, p.endedAt, p.stages])
+const drawn = new Map<string, { sig: string; W: number; zone: number; color: string; track: Track; glideUntil: number }>()
+const trackSig = (p: Plan) => JSON.stringify([p.state, p.startedAt, p.endedAt, p.stages, p.title])
 
-function trackSvg(p: Plan, W: number, now: number): Track {
+// the title zone the bars share on a track W wide: as wide as the longest of their titles asks, up to TITLE_SHARE of the
+// track, and none where that share cannot hold "Abc…" and its margins (the title is then in the words alone)
+function titleZone(list: Plan[], W: number): number {
+  const most = Math.floor(W * TITLE_SHARE)
+  if (most < labelWidth('Abc…') + TITLE_PAD * 2) return 0
+  return Math.min(most, Math.ceil(Math.max(...list.map(p => labelWidth(p.title))) + TITLE_PAD * 2))
+}
+
+function trackSvg(p: Plan, W: number, zone: number, now: number): Track {
   const cached = drawn.get(p.id)
   const sig = trackSig(p)
   const color = stateColor(p.state)
-  if (cached?.sig === sig && cached.W === W && cached.color === color && (cached.glideUntil === 0 || now < cached.glideUntil)) return cached.track
-  const track = drawTrack(p, W, now)
+  if (cached?.sig === sig && cached.W === W && cached.zone === zone && cached.color === color && (cached.glideUntil === 0 || now < cached.glideUntil)) return cached.track
+  const track = drawTrack(p, W, zone, now)
   const glideUntil = track.base.includes('<animateTransform') ? (lastHead.get(p.id)?.at ?? now) + PICTURE_STAND_MS : 0
-  drawn.set(p.id, { sig, W, color, track, glideUntil })
+  drawn.set(p.id, { sig, W, zone, color, track, glideUntil })
   return track
 }
 
-function drawTrack(p: Plan, W: number, now = 0): Track {
+function drawTrack(p: Plan, W: number, zone = 0, now = 0): Track {
   const H = TRACK_H
   const w = atHead(p)
   const done = p.state === 'done'
-  // the fill is exactly the finished share: a fresh plan starts empty
+  // the fill is the title zone and the finished share of the rest: a fresh plan fills the zone alone
   const frac = done ? 1 : Math.min(1, w.pos / Math.max(1, w.total))
-  const fx = frac * W
+  const run = W - zone
+  const fx = zone + frac * run
   const key = p.id
-  // a resize redraws at once: a head drawn at another width would glide in from the wrong place
+  // a resize, or another title zone (a bar with a longer title came or went), redraws at once: a head drawn at another
+  // width or zone would glide in from the wrong place
   const last = lastHead.get(key)
+  const isSameScale = last?.W === W && last.zone === zone
   // drawn again on its way to the same place (an agent's event, any redraw), the glide goes on from where it began,
   // its begin offset putting the pill where its time has got to
-  const isGliding = last?.W === W && Math.abs(last.x - fx) <= 0.5 && now < last.at + PICTURE_STAND_MS
-  const from = isGliding ? last.from : last?.W === W ? last.x : fx
+  const isGliding = isSameScale && Math.abs(last.x - fx) <= 0.5 && now < last.at + PICTURE_STAND_MS
+  const from = isGliding ? last.from : isSameScale ? last.x : fx
   const at = isGliding ? last.at : now
-  lastHead.set(key, { W, x: fx, from, at })
+  lastHead.set(key, { W, zone, x: fx, from, at })
 
   const acc = hex(stateColor(p.state))
   const light = mix(acc, [255, 255, 255], 0.32)
@@ -807,13 +835,20 @@ function drawTrack(p: Plan, W: number, now = 0): Track {
     : // a whole column: the wave's delay (cols / speed) then stays on the flicker's 50 ms beat, one redraw rate for both
       { start: p.startedAt, speed, at: now, cols: Math.round(was.cols + (Math.max(0, now - was.at) / 1000) * was.speed) % STREAM_COLS }
   waveFrom.set(key, wave)
-  const fadeMask = (id: string, stops: [number, number][]) =>
-    `<linearGradient id="${id}g" x1="0" x2="${fx.toFixed(1)}" gradientUnits="userSpaceOnUse">${stops.map(([at, o]) => `<stop offset="${at}" stop-color="#fff" stop-opacity="${o}"/>`).join('')}</linearGradient>` +
-    `<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="url(#${id}g)"/></mask>`
+  // a fade's stops run along the progress, from the end of the title zone to the head; under the title it holds the
+  // level its progress starts at, so the title always lies on the fill's faintest
+  const fadeEnd = Math.max(fx, zone + 1)
+  const fadeMask = (id: string, stops: [number, number][]) => {
+    const along: [number, number][] = [[0, stops[0]?.[1] ?? 0], ...stops.map(([u, o]): [number, number] => [+((zone + u * (fadeEnd - zone)) / fadeEnd).toFixed(4), o])]
+    return (
+      `<linearGradient id="${id}g" x1="0" x2="${fadeEnd.toFixed(1)}" gradientUnits="userSpaceOnUse">${along.map(([at, o]) => `<stop offset="${at}" stop-color="#fff" stop-opacity="${o}"/>`).join('')}</linearGradient>` +
+      `<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="url(#${id}g)"/></mask>`
+    )
+  }
   // without the twinkle the flicker goes as a whole: its dots get their resting opacity from its stylesheet alone, so
   // patterns left without it would draw every one of them bright
   const streamDefs =
-    fadeMask('fade', STREAM_FADE) +
+    fadeMask('fade', FILL_FADE) +
     (isTwinkling ? fadeMask('kfade', FLICKER_FADE) : '') +
     `<pattern id="dg" width="3" height="3" y="1" patternUnits="userSpaceOnUse"><rect width="2" height="2" fill="${rgb(light)}"/></pattern>` +
     `<pattern id="wp" width="${STREAM_COLS * 3}" height="${H}" patternUnits="userSpaceOnUse">${STREAM_WAVE}</pattern>` +
@@ -830,7 +865,7 @@ function drawTrack(p: Plan, W: number, now = 0): Track {
   p.stages.forEach((s, i) => {
     s.steps.forEach((_, j) => {
       if (k > 0) {
-        const x = (k / w.total) * W
+        const x = zone + (k / w.total) * run
         const isStage = j === 0
         // a stage boundary is a short capsule, a step a dot; bright once passed. On a light page both would fade into
         // the track, so there the stylesheet darkens them by class
@@ -856,11 +891,13 @@ function drawTrack(p: Plan, W: number, now = 0): Track {
         const text = fitLabel(full, W - 16, 11, false)
         const tw = Math.min(W, labelWidth(text, 11, false) + 16)
         const tx = Math.max(0, Math.min(W - tw, x - tw / 2))
+        // the area that answers the pointer stays on the progress, off the title zone and inside the track
+        const hx = Math.max(zone, x - 5)
         zoneList.push({
           x,
           isStage,
           item: {
-            hit: `<rect class="h${k}" x="${(x - 5).toFixed(1)}" width="10" height="${H}" fill="#000" fill-opacity="0"/>`,
+            hit: `<rect class="h${k}" x="${hx.toFixed(1)}" width="${(Math.min(W, x + 5) - hx).toFixed(1)}" height="${H}" fill="#000" fill-opacity="0"/>`,
             tip: `<g class="tp p${k}"><rect x="${tx.toFixed(1)}" y="2" width="${tw.toFixed(1)}" height="${H - 4}" rx="${(H - 4) / 2}" fill="#1F1E1D" fill-opacity=".94"/><text x="${(tx + tw / 2).toFixed(1)}" y="${H / 2 + 3.8}" text-anchor="middle" class="tt">${esc(text)}</text></g>`,
             rule: `.h${k}:hover~.p${k}`,
           },
@@ -876,8 +913,21 @@ function drawTrack(p: Plan, W: number, now = 0): Track {
   const tips = zones.map(z => z.tip).join('')
   const tipRules = zones.map(z => z.rule)
 
-  // knob: a pill with stage and count, or a round dot with the stage number when narrow
-  const isNarrow = W < NARROW
+  // the title in its zone, cut to it; a cut one shows whole in a tip while the pointer is over the zone, as far as the
+  // track has room for it (a tip never runs past the track; the words carry the whole title anyway)
+  const title = zone > 0 ? fitLabel(p.title, zone - TITLE_PAD * 2, 12, true, 1) : ''
+  let titleHit = ''
+  let titleTip = ''
+  if (title !== '' && title !== p.title) {
+    const text = fitLabel(p.title, W - 16, 11, false)
+    const tw = Math.min(W, labelWidth(text, 11, false) + 16)
+    titleHit = `<rect class="hz" width="${zone}" height="${H}" fill="#000" fill-opacity="0"/>`
+    titleTip = `<g class="tp pz"><rect y="2" width="${tw.toFixed(1)}" height="${H - 4}" rx="${(H - 4) / 2}" fill="#1F1E1D" fill-opacity=".94"/><text x="${(tw / 2).toFixed(1)}" y="${H / 2 + 3.8}" text-anchor="middle" class="tt">${esc(text)}</text></g>`
+    tipRules.push('.hz:hover~.pz')
+  }
+
+  // knob: a pill with stage and count, or a round dot with the stage number when the progress is short
+  const isNarrow = run < PILL_NAME_W
   const color = stateColor(p.state)
   const icon = ICON_PATH[p.state]
   const single = p.stages.length === 1
@@ -895,8 +945,8 @@ function drawTrack(p: Plan, W: number, now = 0): Track {
     // the pill carries the stage name and, past a thin line, the step at its place (the fill and the percent
     // already say how far along it is); folded agents stay folded, the pill does not count them
     const iconW = icon ? 16 : 0
-    // at most about half a short track, and never so wide on a long one that it hides the marks around it
-    const maxW = Math.max(80, Math.min(W * 0.55, 320))
+    // at most about half a short progress, and never so wide on a long one that it hides the marks around it
+    const maxW = Math.max(80, Math.min(run * 0.55, 320))
     const room = maxW - (20 + iconW)
     // the step is set a size smaller and lighter than the stage, past a thin line
     const stageWidth = (text: string) => labelWidth(text)
@@ -937,7 +987,8 @@ function drawTrack(p: Plan, W: number, now = 0): Track {
       timePill = `${face}${liveClock(mid - CLOCK_W / 2, 3, p.startedAt, 'kc0', 'kt', true)}`
     }
   }
-  const clampX = (x: number) => Math.max(kw / 2, Math.min(W - kw / 2, x))
+  // the pill stays on the progress: at the start it stands just past the title zone, never over it
+  const clampX = (x: number) => Math.max(zone + kw / 2, Math.min(W - kw / 2, x))
   const kx = clampX(fx)
   const kFrom = clampX(from)
 
@@ -954,7 +1005,8 @@ ${FLICKER_CSS}
   const style = `<style>
 ${isTwinkling ? motion : ''}.kt{font:500 12px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:${INK}}
 .kp{font-size:11px;font-weight:400}
-@media (prefers-color-scheme:light){.mp{fill:${rgb(mix(acc, [0, 0, 0], 0.3))};opacity:1}.ma{fill:${SCHEMES.light.gutter};opacity:1}}
+.ti{font:500 12px 'Anthropic Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;fill:${SCHEMES.dark.ink}}.pg{fill:${SCHEMES.dark.page}}
+@media (prefers-color-scheme:light){.mp{fill:${rgb(mix(acc, [0, 0, 0], 0.3))};opacity:1}.ma{fill:${SCHEMES.light.gutter};opacity:1}.ti{fill:${SCHEMES.light.ink}}.pg{fill:${SCHEMES.light.page}}}
 ${STILL_CSS}@media (prefers-reduced-motion:reduce){.wm,[class^="q"]{animation:none}${STILL_REDUCED}}
 </style>`
   const hoverStyle = `<style>
@@ -977,14 +1029,14 @@ ${STILL_CSS}@media (prefers-reduced-motion:reduce){.wm,[class^="q"]{animation:no
   const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
   const base = `${open}${style}
 <defs><clipPath id="pill"><rect width="${W}" height="${H}" rx="${H / 2}"/></clipPath><clipPath id="fill">${withStill((anim, cls) => `<rect${classAttr(cls)} width="${fx.toFixed(1)}" height="${H}">${anim}</rect>`, glideFill)}</clipPath>
-<linearGradient id="base" x1="0" x2="${fx.toFixed(1)}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${rgb(acc)}" stop-opacity=".05"/><stop offset="1" stop-color="${rgb(acc)}" stop-opacity=".33"/></linearGradient>
+<linearGradient id="base" x1="${zone}" x2="${fadeEnd.toFixed(1)}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${rgb(acc)}" stop-opacity=".05"/><stop offset="1" stop-color="${rgb(acc)}" stop-opacity=".33"/></linearGradient>
 ${streamDefs}</defs>
-<g clip-path="url(#pill)"><rect width="${W}" height="${H}" fill="#808080" fill-opacity=".16"/>
-<g clip-path="url(#fill)"><rect width="${fx.toFixed(1)}" height="${H}" fill="url(#base)"/>${stream}</g>${marks}</g>
+<g clip-path="url(#pill)"><rect class="pg" width="${W}" height="${H}"/><rect width="${W}" height="${H}" fill="#808080" fill-opacity=".16"/>
+<g clip-path="url(#fill)"><rect width="${fx.toFixed(1)}" height="${H}" fill="url(#base)"/>${stream}</g>${marks}${title ? `<text x="${TITLE_PAD}" y="${H / 2 + 4.2}" class="ti">${esc(title)}</text>` : ''}</g>
 ${pill}</svg>`
   // the hover layer: checkpoint areas under a running pill's place, so the pill wins where they meet; tips on top
   const pillArea = timePill ? `<rect class="kb" x="${(kx - kw / 2).toFixed(1)}" y="0" width="${kw}" height="${H}" fill="#000" fill-opacity="0"/>` : ''
-  const overlay = `${open}${SEE_THROUGH}${hoverStyle}${hits}${pillArea}${tips}</svg>`
+  const overlay = `${open}${SEE_THROUGH}${hoverStyle}${hits}${titleHit}${pillArea}${tips}${titleTip}</svg>`
   // the pill's copy with its clock, for the desktop to show over the track while the pointer is on it. Shown at any
   // moment, so it glides with the pill (the same glide and offset, and the same still copy for reduced motion) rather
   // than standing at the new place while the pill slides in under it
@@ -3778,11 +3830,12 @@ export const register: Register = (on, options) => {
     const t = $.ui.resolve(e)
     const { Box, Button, Text } = t
     const Svg = 'Svg' in t ? t.Svg : null
-    const total = Math.max(320, (e.props.bodyColumns || 100) * 8)
-    // every bar has the same width and is pinned to the right edge (fixed-width percent, close button),
-    // so rows line up whatever their titles; the slack goes into the gap after the title.
-    // Desktop reports ~8 CSS px per column; glyph, gaps, percent and the close button take ~126 px.
-    const titleWidth = Math.min(Math.round(total * 0.3), Math.max(...list.map(p => Math.round(textWidth(p.title, 6.4)))))
+    // every bar has the same width, its title inside it, and takes all the row has after the glyph, the percent and
+    // the close button (~126 px), so rows line up. The desktop reports ~8 CSS px per column; VS Code counts its columns
+    // in the editor font's advance, often less, and breaks a row that runs past the band, so there it is sized at
+    // VSCODE_COL_PX, with no floor that could take it past the band
+    const cols = e.props.bodyColumns || 100
+    const total = e.surface === 'vscode' ? Math.floor(cols * VSCODE_COL_PX) : Math.max(320, cols * 8)
     await read($, tick)
     // read for its redraws only: the footer's figure changing asks the whole session to draw again, and a band that read
     // nothing changed is handed back as it was last drawn. Rebuilt from that very source, a picture starts its glide
@@ -3792,7 +3845,8 @@ export const register: Register = (on, options) => {
     // a bar with agent strips gets a fold chevron before its ✕ (up folds, down shows), in a cell every row keeps so
     // the rows line up; wide enough for the desktop's own button, which a narrower cell squeezes to a dot
     const hasFold = list.some(p => canFold(p, now, stripBudget(list.length)))
-    const trackW = Math.max(120, Math.min(1400, total - titleWidth - 140 - (hasFold ? 40 : 0)))
+    const trackW = Math.max(120, Math.min(1400, total - 140 - (hasFold ? 40 : 0)))
+    const zone = titleZone(list, trackW)
     // a hairline between task bars, so each bar and its agent strips read as one group
     const divider = `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="1"><rect width="${total}" height="1" fill="#808080" fill-opacity=".22"/></svg>`
 
@@ -3800,7 +3854,7 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column" gap={1}>
         {list.flatMap((p, i) => {
           const v = shownAgents(p, now, stripBudget(list.length))
-          const track = trackSvg(p, trackW, now)
+          const track = trackSvg(p, trackW, zone, now)
           const rows = v && Svg ? stripsSvg(v, p.agents ?? [], trackW, now) : []
           // a glide (as good as over at PICTURE_STAND_MS) or a strip's morph still running is drawn once more when it
           // is over, standing: timed from the move, not from this draw, so a draw late in the glide does not hold the
@@ -3838,8 +3892,9 @@ export const register: Register = (on, options) => {
             ...line,
             <Box key={`bar-${p.id}`} flexDirection="row" alignItems={v ? 'flex-start' : 'center'} gap={1}>
               <Text color={color}>{STATE_GLYPH[p.state]}</Text>
-              <Text wrap="truncate">{p.title}</Text>
-              <Box flexGrow={1} />
+              {/* the title is in the picture; a surface that draws none keeps it as text, the bar pinned right */}
+              {Svg ? null : <Text wrap="truncate">{p.title}</Text>}
+              {Svg ? null : <Box flexGrow={1} />}
               {Svg ? (
                 <Box flexDirection="column" flexShrink={0}>
                   <Box key={`track-${p.id}`}>

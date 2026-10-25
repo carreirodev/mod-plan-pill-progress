@@ -347,8 +347,9 @@ export async function boot(file, kept = new Map()) {
         $.__reads = null
       }
     },
-    svgs: async () => {
-      const tree = await dispatch('ui.render', { component: 'AbovePrompt', surface: 'desktop', props: { bodyColumns: globalThis.COLS ?? 120, hasSurvey: false } }, below)
+    // the band on the desktop, or on another surface that draws pictures there (VS Code's extension, 'vscode')
+    svgs: async (surface = 'desktop') => {
+      const tree = await dispatch('ui.render', { component: 'AbovePrompt', surface, props: { bodyColumns: globalThis.COLS ?? 120, hasSurvey: false } }, below)
       const found = []
       const walk = n => {
         if (Array.isArray(n)) return n.forEach(walk)
@@ -410,9 +411,9 @@ export async function boot(file, kept = new Map()) {
       return true
     },
     // the desktop band's tree as the hooks answer it
-    band: () => dispatch('ui.render', { component: 'AbovePrompt', surface: 'desktop', props: { bodyColumns: 140, hasSurvey: false } }, below),
-    view: async id => {
-      const tree = await api.band()
+    band: (surface = 'desktop') => dispatch('ui.render', { component: 'AbovePrompt', surface, props: { bodyColumns: 140, hasSurvey: false } }, below),
+    view: async (id, surface = 'desktop') => {
+      const tree = await api.band(surface)
       const found = []
       // a strip's drawing sits in a keyed row with its open button; it takes the row's key. A drawing under a Box drawn
       // display none that a hover shows is marked as such

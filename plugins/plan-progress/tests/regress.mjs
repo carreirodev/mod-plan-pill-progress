@@ -213,6 +213,28 @@ const waveAt = src => {
 }
 const onBeat = (t, beat = 0.05) => Math.abs(t / beat - Math.round(t / beat)) < 0.04
 
+// WPC-250: the band drawn at a number of columns, on the desktop or in VS Code ('vscode'), and what one bar's pictures say
+const atCols = async (E, cols, surface = 'desktop') => {
+  globalThis.COLS = cols
+  try {
+    return await E.svgs(surface)
+  } finally {
+    delete globalThis.COLS
+  }
+}
+const trackOf = (svgs, title) => svgs.find(s => !s.isInteractive && s.alt.startsWith(title + ':'))
+const overlayOf = (svgs, title) => svgs.slice(svgs.indexOf(trackOf(svgs, title)) + 1).find(s => s.isInteractive)
+// where the fill ends: the clip's width, which a glide animates towards
+const fillOf = src => Number(src.match(/<clipPath id="fill"><rect(?: class="[^"]*")? width="([\d.]+)"/)?.[1])
+// the pill: its place (the translate of the copy that stands, or of the moving one) and its width (a capsule, or the
+// round dot, 22 px)
+const pillOf = src => {
+  const x = Number([...src.matchAll(/<(?:g|use) (?:class="[ms]v" )?(?:href="#kn" )?transform="translate\(([\d.]+) 0\)"/g)].at(-1)?.[1])
+  const w = Number(src.match(/<rect x="-[\d.]+" y="0" width="([\d.]+)" height="22" rx="11"/)?.[1] ?? (/<circle cx="0" cy="11" r="11"/.test(src) ? 22 : NaN))
+  return { x, w, left: x - w / 2, right: x + w / 2 }
+}
+const titleIn = src => src.match(/<text x="([\d.]+)" y="[\d.]+" class="ti">(.*?)<\/text>/)
+
 const C = {
   async T01_next(E) {
     await create(E)
@@ -5226,8 +5248,9 @@ const C = {
     return [seen.join('; '), ok]
   },
   async more_agents_line_fits_a_narrow_strip(E) {
-    // the "+N more agents" line of a big batch in a narrow window (50-60 columns, a long title beside the bar) ends
-    // inside its strip: the done count gives way first, then the words are cut with an ellipsis
+    // the "+N more agents" line of a big batch in a narrow band ends inside its strip: the done count gives way first,
+    // then the words are cut with an ellipsis. The title is inside the bar now (WPC-250), so the narrowest strips are
+    // VS Code's at 30 columns (120 px, as narrow as a long title beside the bar left them at 50) and the desktop's at 40
     await E.call({ id: 't', title: 'Refactor the payment service and all of its tests', stages: [S('A', st('One', 'active'), 'Two')] })
     for (let i = 1; i <= 8; i++) await E.spawn(`a${i}`, `Agent ${i}`)
     await E.turnComplete('a1')
@@ -5237,14 +5260,14 @@ const C = {
     const seen = []
     let ok = true
     try {
-      for (const cols of [50, 60]) {
+      for (const [surface, cols] of [['vscode', 30], ['desktop', 40]]) {
         globalThis.COLS = cols
-        const more = (await E.svgs()).find(s => s.alt === 'more agents')
+        const more = (await E.svgs(surface)).find(s => s.alt === 'more agents')
         const [, x, text] = more.source.match(/<text x="([\d.]+)" y="[\d.]+" class="sn st">(.*?)<\/text>/)
         const end = Number(x) + tw(text)
-        seen.push(`${cols} cols "${text}" ends at ${end.toFixed(1)} of ${more.width}`)
-        // at 50 columns even "4 more agents" is too long and takes the ellipsis
-        ok &&= text.startsWith('4 more') && end <= more.width - 4 + 0.01 && (cols !== 50 || text.endsWith('…'))
+        seen.push(`${surface} ${cols} cols "${text}" ends at ${end.toFixed(1)} of ${more.width}`)
+        // on the 120 px strip even "4 more agents" is too long and takes the ellipsis
+        ok &&= text.startsWith('4 more') && end <= more.width - 4 + 0.01 && (more.width !== 120 || text.endsWith('…'))
       }
     } finally {
       delete globalThis.COLS
@@ -5693,6 +5716,344 @@ const C = {
       const command = s.subagentStatusLine?.command
       return [`command ${command}, rows file ${'C:\\Users\\x/.claude/plan-progress/agent-rows.jsonl' in globalThis.FILES}`, command === 'cat "C:/Users/x/.claude/plan-progress/agent-rows.jsonl"' && 'C:\\Users\\x/.claude/plan-progress/agent-rows.jsonl' in globalThis.FILES]
     }, { USERPROFILE: 'C:\\Users\\x' })
+  },
+  // WPC-250: the plan bar's title inside it and scattered dots, on the desktop and in VS Code; the terminal stays
+  async terminal_band_is_drawn_as_in_1_3_0() {
+    // C27: the terminal keeps its title column and braille fill. Its whole band, the tree and every raster cell, for
+    // the four states, three widths, fullscreen or not, twinkle on and off, a bar with agents, on a dark terminal with
+    // round ends and a light one without, hashes to what the 1.3.0 build drew (taken from that build)
+    const { createHash } = await import('node:crypto')
+    const hash = createHash('sha256')
+    const draw = async (F, ms) => {
+      for (const cols of [40, 120, 200]) {
+        for (const isFullscreen of [false, true]) {
+          F.tick(ms)
+          hash.update(JSON.stringify((await F.terminal(cols, isFullscreen))[0], (_, v) => (typeof v === 'function' ? 'fn' : v)))
+        }
+      }
+    }
+    for (const [machine, env] of [[{ DARK: true }, { TERM_PROGRAM: 'WezTerm' }], [{ MAC: false, THEME: 'light' }, {}]]) {
+      for (const twinkle of [true, false]) {
+        await withMachine(machine, async () => {
+          globalThis.OPTIONS = { twinkle }
+          globalThis.ENV = env
+          try {
+            const F = await boot(file)
+            await F.call({ id: 'r', title: 'Refactor payments', stages: [S('Scan', st('Routes', 'done'), st('Services', 'active')), S('Report', 'Summary', 'Review')] })
+            await F.spawn('g1', 'Count route files')
+            await F.spawn('g2', 'List service modules')
+            F.tick(4000)
+            await F.agentTool('g1', 'Grep')
+            await F.turnComplete('g2')
+            await F.call({ id: 'w', title: 'UI audit', stages: [S('Collect', st('Components', 'active'), 'Styles')], state: 'needs_input', note: 'Which theme?' })
+            await F.call({ id: 'e', title: '設定の確認 ✅', stages: [S('Build', st('Compile', 'done'), st('Link', 'active'))] })
+            await F.call({ id: 'e', failed: 'Link', note: 'linker error' })
+            await draw(F, 1234)
+            await F.call({ id: 'w', state: 'done' })
+            await draw(F, 777)
+          } finally {
+            delete globalThis.OPTIONS
+            delete globalThis.ENV
+          }
+        })
+      }
+    }
+    const got = hash.digest('hex').slice(0, 16)
+    return [`terminal band hash ${got}`, got === '42755b970f0b007c']
+  },
+  async row_is_mark_bar_percent_close() {
+    // C1: on the desktop a bar's row is its state mark, its picture, its percent, the fold arrow's cell (its arrow only
+    // where there are agents to fold) and its ✕, in that order; no Text in the row carries the title
+    const kindOf = n => {
+      if (n.type === 'Text') {
+        const text = (n.children ?? []).flat(Infinity).join('')
+        return text === '●' ? 'mark' : /^\s*\d+%$/.test(text.replaceAll(FIG, ' ')) ? 'percent' : `text "${text}"`
+      }
+      if (n.type === 'Button') return n.props.label === '✕' ? 'close' : `button ${n.props.label}`
+      if (n.type === 'Box' && walkAll(n).some(c => c.type === 'Svg' && c.props.height === 22 && !c.props.isInteractive && / /.test(c.props.alt ?? ''))) return 'bar'
+      if (n.type === 'Box' && n.props.width === 5) return walkAll(n).some(c => c.type === 'Button' && /^fold-/.test(c.props.key ?? '')) ? 'fold' : 'fold cell'
+      return n.type
+    }
+    const rows = async F =>
+      walkAll(await F.band())
+        .filter(n => n.type === 'Box' && /^bar-/.test(n.props.key ?? ''))
+        .map(r => ({ key: r.props.key, kinds: (r.children ?? []).flat(Infinity).filter(c => c && typeof c === 'object').map(kindOf), texts: walkAll(r).filter(c => c.type === 'Text').map(c => (c.children ?? []).flat(Infinity).join('')) }))
+    const F = await boot(file)
+    await create(F, 'a', three(), 'Docs review')
+    const plain = await rows(F)
+    await create(F, 'b', three(), 'Refactor payments')
+    await F.spawn('ag1', 'Scan routes')
+    const folded = await rows(F)
+    const same = (r, want) => r?.kinds.join() === want.join()
+    const titled = [...plain, ...folded].some(r => r.texts.some(t => t.includes('Docs review') || t.includes('Refactor payments')))
+    const ok =
+      same(plain[0], ['mark', 'bar', 'percent', 'close']) &&
+      same(folded.find(r => r.key === 'bar-a'), ['mark', 'bar', 'percent', 'fold cell', 'close']) &&
+      same(folded.find(r => r.key === 'bar-b'), ['mark', 'bar', 'percent', 'fold', 'close']) &&
+      !titled
+    return [`alone: ${plain[0]?.kinds.join(' ')}; with agents: ${folded.map(r => `${r.key} ${r.kinds.join(' ')}`).join('; ')}; a Text with the title ${titled}`, ok]
+  },
+  async title_zone_fits_the_longest_title() {
+    // C2: the title is drawn in the picture, 12 px in. Its zone is as wide in every bar shown, the width the longest
+    // title asks: as wide as Segoe UI draws it at 12 px medium (measured in Chromium) and 12 px each side, up to 15% more
+    // for the room the mod's measure keeps; and never past 30% of the track. A fresh plan fills its zone alone (C6), so
+    // the fill of a bar with no step done is its zone
+    const MEASURED = { Docs: 26.6, 'Refactor payments': 101.7 }
+    const fits = (zone, title) => zone >= MEASURED[title] + 24 && zone <= MEASURED[title] * 1.15 + 24
+    const F = await boot(file)
+    await create(F, 'a', three(), 'Docs')
+    const alone = fillOf(trackOf(await atCols(F, 120), 'Docs').source)
+    await create(F, 'b', three(), 'Refactor payments')
+    const both = await atCols(F, 120)
+    const [a, b] = ['Docs', 'Refactor payments'].map(t => trackOf(both, t).source)
+    const G = await boot(file)
+    await create(G, 'b', three(), 'Refactor payments')
+    const longAlone = fillOf(trackOf(await atCols(G, 120), 'Refactor payments').source)
+    const inside = [a, b].every(src => titleIn(src)?.[1] === '12') && titleIn(a)?.[2] === 'Docs' && titleIn(b)?.[2] === 'Refactor payments'
+    // a title longer than 30% of the track takes 30% of it, cut
+    const H = await boot(file)
+    const long = 'Refactor the payment service and all of its tests and docs'
+    await create(H, 'c', three(), long)
+    const capped = trackOf(await atCols(H, 120), long)
+    const cap = Math.floor(capped.width * 0.3)
+    const ok = inside && fits(alone, 'Docs') && fillOf(a) === fillOf(b) && fillOf(b) === longAlone && fits(longAlone, 'Refactor payments') && fillOf(capped.source) === cap && titleIn(capped.source)?.[2].endsWith('…')
+    return [`Docs alone ${alone}, beside the longer title ${fillOf(a)}/${fillOf(b)}, the longer alone ${longAlone}; titles at x 12 ${inside}; a long title on ${capped.width} px takes ${fillOf(capped.source)} (30%: ${cap}), "${titleIn(capped.source)?.[2]}"`, ok]
+  },
+  async cut_title_shows_whole_on_hover() {
+    // C3: a title cut to its zone ends in "…", and the hover layer has an area over the zone, before a tip that holds the
+    // whole title, shown by hovering it; a title that fits has neither
+    const long = 'Refactor the payment service and all of its tests and docs'
+    const F = await boot(file)
+    await create(F, 'a', three(), 'Docs')
+    await create(F, 'b', three(), long)
+    const svgs = await atCols(F, 120)
+    const shown = titleIn(trackOf(svgs, long).source)?.[2] ?? ''
+    const cut = shown.endsWith('…') && long.startsWith(shown.slice(0, -1)) && shown.length < long.length
+    const over = overlayOf(svgs, long).source
+    const zone = fillOf(trackOf(svgs, long).source)
+    const area = over.match(/<rect class="(h\w+)" (?:x="0" )?width="([\d.]+)" height="22"/)
+    const tip = area && over.match(new RegExp(`<g class="tp (p\\w+)">.*?<text[^>]*>([^<]*)</text></g>`, 'g'))?.map(g => g.match(/class="tp (p\w+)">.*?<text[^>]*>([^<]*)</)).find(m => m?.[2] === long)
+    const shows = !!tip && over.includes(`.${area[1]}:hover~.${tip[1]}`) && over.indexOf(area[0]) < over.indexOf(`class="tp ${tip[1]}"`) && Number(area[2]) === zone
+    const docs = overlayOf(svgs, 'Docs').source
+    const fitting = titleIn(trackOf(svgs, 'Docs').source)?.[2] === 'Docs' && !/<rect class="h[a-z]/.test(docs) && !docs.includes('>Docs<')
+    return [`shown "${shown}" cut ${cut}; area over the zone (${area?.[2]} of ${zone}) and a tip with the whole title ${shows}; a title that fits has none ${fitting}`, cut && shows && fitting]
+  },
+  async narrow_bar_has_no_title_zone() {
+    // C4: where 30% of the track cannot hold "Abc…" and its margins (the desktop at 41 columns, a 188 px track) there is
+    // no title zone: no title in the picture, the fill and the marks over the whole track; at 42 columns (196 px) there
+    // is one. Either way the words start with the title
+    const seen = []
+    let ok = true
+    for (const cols of [41, 42]) {
+      const F = await boot(file)
+      await F.call({ id: 't', title: 'Task', stages: [S('One', st('A', 'done'), st('B', 'active'), 'C')] })
+      const track = trackOf(await atCols(F, cols), 'Task')
+      const W = track.width
+      const marks = [...track.source.matchAll(/<rect class="m[pa]" x="([\d.]+)"|<circle class="m[pa]" cx="([\d.]+)"/g)].map(m => (m[1] ? Number(m[1]) + 1.5 : Number(m[2])))
+      const hasTitle = titleIn(track.source) !== null
+      seen.push(`${cols} columns: ${W} px, title inside ${hasTitle}, fill ${fillOf(track.source)}, marks ${marks.join('/')}`)
+      if (cols === 41) ok &&= W === 188 && !hasTitle && Math.abs(fillOf(track.source) - W / 3) <= 0.1 && Math.abs(marks[0] - W / 3) <= 0.1 && Math.abs(marks[1] - (2 * W) / 3) <= 0.1
+      else ok &&= W === 196 && titleIn(track.source)?.[2] === 'Task' && fillOf(track.source) > W / 3 + 1
+      ok &&= track.alt.startsWith('Task: ')
+    }
+    return [seen.join('; '), ok]
+  },
+  async progress_runs_from_the_title_zone_to_the_end(E) {
+    // C5: a share f of the plan done puts the fill's head at zone + f × (W − zone); no part of the pill starts before the
+    // zone ends; the marks and the areas that answer the pointer lie between the zone's end and the track's right end
+    const stages = [1, 2, 3, 4].map(s => S(`Stage ${s}`, ...Array.from({ length: 50 }, (_, j) => `S${s}.${j}`)))
+    await E.call({ id: 't', title: 'Refactor payments', stages })
+    const zone = fillOf(trackOf(await atCols(E, 120), 'Refactor payments').source)
+    const seen = []
+    let ok = zone > 0
+    for (const [n, f] of [[50, 0.25], [100, 0.5], [150, 0.75]]) {
+      await E.call({ id: 't', done: stages.flatMap(s => s.steps).slice(0, n).map(x => x.title) })
+      E.tick(1000)
+      const svgs = await atCols(E, 120)
+      const track = trackOf(svgs, 'Refactor payments')
+      const W = track.width
+      const fx = fillOf(track.source)
+      const pill = pillOf(track.source)
+      const marks = [...track.source.matchAll(/<rect class="m[pa]" x="([\d.]+)"|<circle class="m[pa]" cx="([\d.]+)"/g)].map(m => (m[1] ? Number(m[1]) + 1.5 : Number(m[2])))
+      const hits = [...overlayOf(svgs, 'Refactor payments').source.matchAll(/<rect class="h\d+" x="([\d.]+)" width="([\d.]+)"/g)].map(m => [Number(m[1]), Number(m[1]) + Number(m[2])])
+      const head = Math.abs(fx - (zone + f * (W - zone))) <= 0.1
+      const placed = pill.left >= zone - 0.05 && marks.length > 0 && marks.every(x => x >= zone && x <= W) && hits.length > 0 && hits.every(([a, b]) => a >= zone - 0.05 && b <= W + 0.05)
+      seen.push(`${f}: head ${fx} (${head}), pill from ${pill.left.toFixed(1)}, ${marks.length} marks ${marks[0]?.toFixed(1)}..${marks.at(-1)?.toFixed(1)}, ${hits.length} areas ${hits[0]?.[0]}..${hits.at(-1)?.[1]}`)
+      ok &&= head && placed
+    }
+    return [`zone ${zone}; ${seen.join('; ')}`, ok]
+  },
+  async fresh_plan_fills_the_title_zone(E) {
+    // C6: with no step done the fill covers the title zone exactly, at the fill's faintest (the whole of it on the
+    // gradient's first stop), and the pill's left edge stands at the zone's end. The zone is read from the same plan
+    // half done: there the head is at zone + (W − zone) / 2
+    await E.call({ id: 't', title: 'Refactor payments', stages: [S('One', st('A', 'active'), 'B'), S('Two', 'C', 'D')] })
+    const fresh = trackOf(await atCols(E, 120), 'Refactor payments')
+    await E.call({ id: 't', done: ['A', 'B'] })
+    const half = trackOf(await atCols(E, 120), 'Refactor payments')
+    const zone = 2 * fillOf(half.source) - half.width
+    const fx = fillOf(fresh.source)
+    const x1 = Number(fresh.source.match(/<linearGradient id="base" x1="([\d.]+)"/)?.[1])
+    const first = fresh.source.match(/<linearGradient id="base"[^>]*><stop offset="0" stop-color="[^"]+" stop-opacity="([\d.]+)"/)?.[1]
+    const pill = pillOf(fresh.source)
+    const ok = zone > 0 && Math.abs(fx - zone) <= 0.2 && x1 >= fx - 0.1 && first === '.05' && Math.abs(pill.left - zone) <= 0.2
+    return [`zone ${zone}, fresh fill ${fx}, gradient starts at ${x1} with ${first}, pill from ${pill.left.toFixed(1)}`, ok]
+  },
+  async pill_glides_inside_the_progress(E) {
+    // C7: a step finishing slides the pill from its old place to the new one without its left edge passing the title
+    // zone's end, and the fill slides from a place inside the progress
+    await E.call({ id: 't', title: 'Refactor payments', stages: [S('One', st('A', 'active'), 'B'), S('Two', 'C', 'D')] })
+    const zone = fillOf(trackOf(await atCols(E, 120), 'Refactor payments').source)
+    E.tick(1000)
+    await E.call({ id: 't', next: true })
+    const src = trackOf(await atCols(E, 120), 'Refactor payments').source
+    const [, from, to] = src.match(/<animateTransform [^>]*from="([\d.]+) 0" to="([\d.]+) 0"/) ?? []
+    const [, fillFrom, fillTo] = src.match(/<animate attributeName="width" from="([\d.]+)" to="([\d.]+)"/) ?? []
+    const kw = pillOf(src).w
+    const ok = Number(to) > Number(from) && Number(from) - kw / 2 >= zone - 0.05 && Number(to) - kw / 2 >= zone - 0.05 && Number(fillFrom) >= zone - 0.05 && Number(fillTo) > Number(fillFrom)
+    return [`zone ${zone}; pill ${from} → ${to} (${kw} wide), fill ${fillFrom} → ${fillTo}`, ok]
+  },
+  async title_zone_change_redraws_without_a_glide(E) {
+    // C8: a bar coming or going that changes the title zone redraws the others at the new zone at once, with no glide
+    await E.call({ id: 'a', title: 'Docs', stages: [S('One', st('A', 'done'), st('B', 'active'), 'C')] })
+    await atCols(E, 120)
+    E.tick(1000)
+    const before = trackOf(await atCols(E, 120), 'Docs').source
+    await create(E, 'b', three(), 'Refactor payments')
+    E.tick(10)
+    const withB = await atCols(E, 120)
+    const during = trackOf(withB, 'Docs').source
+    const bigZone = fillOf(trackOf(withB, 'Refactor payments').source)
+    await E.call({ id: 'b', state: 'done' })
+    await E.press(walkAll(await E.band()), 'close-b')
+    E.tick(10)
+    const after = trackOf(await atCols(E, 120), 'Docs').source
+    const W = 820
+    const third = z => z + (W - z) / 3
+    const smallZone = (3 * fillOf(before) - W) / 2
+    const glides = src => src.includes('<animate')
+    const ok = !glides(during) && !glides(after) && Math.abs(fillOf(during) - third(bigZone)) <= 0.1 && Math.abs(fillOf(after) - fillOf(before)) <= 0.1 && bigZone > smallZone + 20
+    return [`Docs at ${fillOf(before)} (zone ${smallZone.toFixed(1)}); beside the longer title ${fillOf(during)} (zone ${bigZone}), glides ${glides(during)}; alone again ${fillOf(after)}, glides ${glides(after)}`, ok]
+  },
+  async finished_bar_keeps_its_title(E) {
+    // C9: a finished bar is green, its title still in its zone, its pill at the right end with the time the plan took
+    await create(E)
+    E.tick(125_000)
+    await E.call({ id: 't', state: 'done' })
+    const src = trackOf(await atCols(E, 120), 'Task').source
+    const pill = pillOf(src)
+    const green = src.includes('rx="11" fill="#18883A"')
+    const ok = green && titleIn(src)?.[2] === 'Task' && Math.abs(pill.right - 820) <= 0.1 && src.includes('>2m 5s<')
+    return [`green ${green}, title "${titleIn(src)?.[2]}", pill ends at ${pill.right}, time ${src.includes('>2m 5s<')}`, ok]
+  },
+  async pill_name_needs_160_px_of_progress() {
+    // C11: from 160 px of room for the progress the pill is the capsule with the stage's name; below, the round dot with
+    // the stage's number. A long title takes its 30%: 46 columns leave 228 − 68 = 160 px, 45 columns 220 − 66 = 154
+    const long = 'Refactor the payment service and all of its tests'
+    const seen = []
+    let ok = true
+    for (const cols of [46, 45]) {
+      const F = await boot(file)
+      await F.call({ id: 't', title: long, stages: [S('Build', st('A', 'active'), 'B'), S('Ship', 'C')] })
+      const track = trackOf(await atCols(F, cols), long)
+      const run = track.width - fillOf(track.source)
+      const named = /<rect x="-[\d.]+" y="0" width="[\d.]+" height="22" rx="11"[^>]*\/>.*?>Build</.test(track.source)
+      const dot = /<circle cx="0" cy="11" r="11"[^>]*\/><text[^>]*>1<\/text>/.test(track.source)
+      seen.push(`${cols} columns: ${run} px of progress, name ${named}, round dot ${dot}`)
+      ok &&= run >= 160 ? named && !dot : dot && !named
+    }
+    return [seen.join('; '), ok && /: 160 px/.test(seen[0]) && /: 15\d px/.test(seen[1])]
+  },
+  async strip_tool_word_keeps_its_360_px(E) {
+    // C12: an agent's strip leaves out its tool word on a 356 px bar and shows it on a 364 px one: 360 px, as before
+    await create(E)
+    await E.spawn('ag1', 'Scan routes')
+    await E.agentTool('ag1', 'Grep')
+    const seen = []
+    for (const cols of [67, 68]) {
+      const svgs = await atCols(E, cols)
+      const strip = svgs.find(s => String(s.key ?? '').startsWith('strip-t-'))
+      seen.push([trackOf(svgs, 'Task').width, strip.width, strip.source.includes('>Grep<')])
+    }
+    const ok = seen[0].join() === '356,356,false' && seen[1].join() === '364,364,true'
+    return [seen.map(([w, sw, word]) => `${w} px bar, ${sw} px strip, tool word ${word}`).join('; '), ok]
+  },
+  async agent_strips_line_up_under_the_bar(E) {
+    // C13: the agents' strips sit in the bar's own column, right under it, as wide as it; the column comes right after
+    // the state mark
+    await create(E)
+    await E.spawn('ag1', 'Scan routes')
+    await E.spawn('ag2', 'Read docs')
+    const all = walkAll(await E.band())
+    const row = all.find(n => n.type === 'Box' && n.props.key === 'bar-t')
+    const kids = (row.children ?? []).flat(Infinity).filter(c => c && typeof c === 'object')
+    const column = kids.find(c => c.type === 'Box' && (c.children ?? []).flat(Infinity).some(k => k?.props?.key === 'track-t'))
+    const inside = (column?.children ?? []).flat(Infinity).filter(c => c && typeof c === 'object')
+    const trackBox = inside.findIndex(c => c.props?.key === 'track-t')
+    const width = walkAll(inside[trackBox]).find(n => n.type === 'Svg' && !n.props.isInteractive)?.props.width
+    const strips = inside.slice(trackBox + 1).filter(c => c.type === 'Svg' && /^strip-t-/.test(c.props.key ?? ''))
+    const ok = kids.indexOf(column) === 1 && kids[0]?.type === 'Text' && trackBox === 0 && strips.length === 2 && strips.every(s => s.props.width === width)
+    return [`column at ${kids.indexOf(column)} after the mark, track first ${trackBox === 0}, ${strips.length} strips under it at ${strips.map(s => s.props.width).join('/')} px, the bar ${width} px`, ok]
+  },
+  async hover_marks_and_clock_follow_the_progress(E) {
+    // C14: the marks' hover areas stand at their new places, zone + k/total × (W − zone), each with its tip; the pill's
+    // clock lies on the pill at its new place
+    await E.call({ id: 't', title: 'Refactor payments', stages: [S('One', st('A', 'done'), st('B', 'active')), S('Two', 'C', 'D')] })
+    const v = await E.view('t')
+    const W = Number(v.track.match(/<svg[^>]* width="(\d+)"/)?.[1])
+    const zone = (fillOf(v.track) - W / 4) / (3 / 4)
+    const areas = [...v.overlay.matchAll(/<rect class="h(\d+)" x="([\d.]+)" width="([\d.]+)"/g)].map(m => [Number(m[1]), Number(m[2]) + Number(m[3]) / 2])
+    const placed = areas.length === 3 && areas.every(([k, mid]) => Math.abs(mid - (zone + (k / 4) * (W - zone))) <= 0.1 && v.overlay.includes(`class="tp p${k}"`) && v.overlay.includes(`.h${k}:hover~.p${k}`))
+    const clockAt = pillOf(v.clock).x
+    const ok = placed && v.clock.includes('class="kc0 ') && Math.abs(clockAt - pillOf(v.track).x) <= 0.05
+    return [`zone ${zone.toFixed(1)}; areas ${areas.map(([k, m]) => `${k}@${m.toFixed(1)}`).join(' ')} with tips ${placed}; clock at ${clockAt}, pill at ${pillOf(v.track).x}`, ok]
+  },
+  async vscode_row_fits_its_columns() {
+    // C15: in VS Code (bodyColumns N) the bar and the rest of its row (140 px, 180 with the fold arrow) take at most
+    // N × 6.5 px wherever the bar keeps 120 px or more; at 30 columns the bar keeps 120 px; the line between bars never
+    // runs past N × 6.5 px; bodyColumns 0 counts as 100
+    const seen = []
+    let ok = true
+    const F = await boot(file)
+    await create(F, 'a', three(), 'Docs')
+    await create(F, 'b', three(), 'Refactor payments')
+    for (const n of [30, 40, 60, 100, 200, 300, 0]) {
+      const svgs = await atCols(F, n, 'vscode')
+      const W = trackOf(svgs, 'Docs').width
+      const line = svgs.find(s => s.alt === 'divider').width
+      const cols = n || 100
+      seen.push(`${n}: bar ${W}, line ${line}`)
+      ok &&= line <= cols * 6.5 && (cols * 6.5 - 140 >= 120 ? W + 140 <= cols * 6.5 : W === 120)
+      if (n === 30) ok &&= W === 120
+      if (n === 0) ok &&= W === trackOf(await atCols(F, 100, 'vscode'), 'Docs').width
+    }
+    const G = await boot(file)
+    await create(G)
+    await G.spawn('ag1', 'Scan routes')
+    for (const n of [47, 60, 100]) {
+      const W = trackOf(await atCols(G, n, 'vscode'), 'Task').width
+      seen.push(`${n} with the arrow: bar ${W}`)
+      ok &&= W >= 120 && W + 180 <= n * 6.5
+    }
+    return [seen.join('; '), ok]
+  },
+  async desktop_row_counts_8_px_a_column() {
+    // C16: on the desktop the bar is max(120, min(1400, max(320, 8 × N) − 140 − 40 with the fold arrow)) px
+    const want = (n, fold) => Math.max(120, Math.min(1400, Math.max(320, 8 * n) - 140 - (fold ? 40 : 0)))
+    const seen = []
+    let ok = true
+    const F = await boot(file)
+    await create(F, 'a', three(), 'Docs')
+    for (const n of [30, 100, 300]) {
+      const W = trackOf(await atCols(F, n), 'Docs').width
+      seen.push(`${n}: ${W}`)
+      ok &&= W === want(n, false)
+    }
+    await F.spawn('ag1', 'Scan routes')
+    const W = trackOf(await atCols(F, 120), 'Docs').width
+    seen.push(`120 with the arrow: ${W}`)
+    ok &&= W === want(120, true)
+    return [seen.join('; '), ok]
   },
   async dollar_goes_only_to_top_level_functions(E) {
     // the engine scans a module before it loads it and refuses one that hands a hook's $ to anything but a function
