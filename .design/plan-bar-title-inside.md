@@ -28,7 +28,7 @@ Out:
 - O terminal: fica como está, com o título fora da barra e os pontos em braille. O autor pediu só desktop e VS Code, então daqui em diante as superfícies deixam de ser iguais nesse ponto.
 - O cabeçalho "From the plan-progress plugin" e a moldura em volta da faixa no VS Code: quem os desenha é a extensão, não o mod.
 
-Unchanged: a aparência das linhas dos agentes. Elas continuam alinhadas sob a barra, que agora começa logo depois da marca de estado, então começam mais à esquerda e ficam mais largas. Também não mudam a seta de recolher e o ✕ (a porcentagem também não mudava, até ir para dentro da pílula na 1.4.2, Key decision 6); o relógio que a pílula mostra quando o mouse passa sobre a barra e as dicas dos marcos, que só mudam de posição (Key decision 1); o texto alternativo da barra; o registro `Plan` e as barras salvas por sessão; a janela de configurações.
+Unchanged: a aparência das linhas dos agentes (até a 1.4.3, que as deixa escuras em qualquer tema, Key decision 7). Elas continuam alinhadas sob a barra, que agora começa logo depois da marca de estado, então começam mais à esquerda e ficam mais largas. Também não mudam a seta de recolher e o ✕ (a porcentagem também não mudava, até ir para dentro da pílula na 1.4.2, Key decision 6); o relógio que a pílula mostra quando o mouse passa sobre a barra e as dicas dos marcos, que só mudam de posição (Key decision 1); o texto alternativo da barra; o registro `Plan` e as barras salvas por sessão; a janela de configurações.
 
 ## Shape
 
@@ -44,6 +44,7 @@ A alternativa mais pesada é levar o mesmo desenho ao terminal. Ela só ganha se
 6. **No desktop e no VS Code a porcentagem fica dentro da pílula, na ponta direita, até o plano terminar** (desde a 1.4.2, pedido do autor em 2026-10-25). Ela aparece em andamento, aguardando e com erro, e também na cópia da pílula que mostra o relógio quando o mouse passa. Nunca é cortada: num trecho longo, os nomes da etapa e do passo cedem espaço a ela, e a pílula continua com no máximo 320 px. Onde a pílula perderia o nome (menos de 160 px de progresso), ela traz só a porcentagem. No plano concluído, a pílula mostra o tempo total e a porcentagem some. O terminal continua com a porcentagem fora da barra.
 4. **O preenchimento é um campo de pontos espalhados, rarefeito e fraco no começo, mais denso e claro perto da pílula, como o do terminal. Essa rampa corre só sobre o trecho do progresso: sob o título os pontos ficam sempre no nível mais fraco.** Isso refina os desenhos, onde a 4% os pontos sob o título já eram densos. Cada barra tem os seus pontos, cada um num lugar fixo que nunca muda nem se embaralha, nem quando a faixa é redesenhada. O que muda com o avanço é quais pontos aparecem e com que brilho: os de trás podem rarear e enfraquecer conforme a pílula anda. A onda de luz, o cintilar e a versão parada (cintilar desligado, ou movimento reduzido no sistema) continuam. A figura fica abaixo do limite do motor para um `Svg` (131.072 caracteres) mesmo na barra mais larga (1.400 px). A grade de hoje é um padrão que se repete e não cresce com a largura; um desenho ponto a ponto cresce, e é aí que esse limite morde.
 5. **O título se lê com contraste AA sobre o preenchimento, nos dois temas e nos quatro estados (em andamento, aguardando, erro, concluído), em qualquer ponto do progresso.** O nível fraco e fixo sob o título (Key decision 4) é o que garante isso. Adensar ou clarear os pontos ali quebra esta regra.
+7. **No desktop e no VS Code a barra deita a página escura por baixo do trilho em qualquer tema, com o título na cor de texto do tema escuro e os marcos como no tema escuro** (desde a 1.4.3, pedido do autor em 2026-10-25). Até a 1.4.2 a barra trocava para a página branca no tema claro. Só que quem diz "claro" ou "escuro" ali é o sistema, não o app: com o Windows no modo claro e o VS Code (Cursor) num tema escuro, a barra saía branca, e os pontos roxo-claros quase sumiam nela. O ajuste `window.systemColorTheme: auto` do VS Code não mudou isso. No tema claro os pontos já tinham as cores do tema escuro (C26), então a página escura é a que os mostra. Na mesma versão, também a pedido do autor, as linhas dos agentes ficam escuras do mesmo jeito: a cápsula, o nome, o tempo e a palavra da ferramenta. Só o robô e o número à esquerda da linha, que ficam sobre o fundo do app e não sobre a cápsula, continuam seguindo o tema.
 
 ## Work
 
@@ -81,7 +82,7 @@ depois   ● ╭WPC-245 ⠂⠄⡀⠂⣀⣠⣤(Build │ API)·····│···�
 | Título maior que o trecho | cortado com "…", e inteiro ao passar o mouse sobre ele e no texto alternativo |
 | Trecho do progresso com 160 px ou mais | a pílula mostra o nome da etapa, encurtado se precisar, e o passo depois dele se couber |
 | Trecho do progresso com menos de 160 px | a bolinha redonda com o número da etapa, que hoje aparece sempre que a barra inteira tem menos de 360 px. Desde a 1.4.2, uma pílula só com a porcentagem (Key decision 6); concluído, a bolinha com o ✓ |
-| Tema claro | o título na cor de texto do tema claro, e os marcos como hoje |
+| Tema claro | o título na cor de texto do tema claro, e os marcos como hoje. Desde a 1.4.3, a mesma barra do tema escuro (Key decision 7) |
 | Mouse sobre o trecho do progresso | o relógio na pílula e as dicas dos marcos, como hoje |
 
 Alternatives considered: o título passando por baixo da pílula (variante A) - ganharia se o progresso precisasse da barra inteira, mas esconde o título no começo de todo plano. O título acompanhando a pílula (variante C) - ganharia pelo mesmo motivo, mas o título muda de lugar uma vez em cada plano.
@@ -119,7 +120,7 @@ Os tipos do motor (2.1.308) dizem que a faixa acima do prompt só existe no term
 | Sob o título | sempre o nível mais fraco, em qualquer ponto do progresso (Key decision 4) |
 | A faixa é redesenhada por outro motivo | os mesmos pontos, sem piscar nem recomeçar |
 | Duas barras ao mesmo tempo | cada uma com pontos diferentes |
-| Tema claro | como o preenchimento de hoje no tema claro |
+| Tema claro | como o preenchimento de hoje no tema claro. Desde a 1.4.3, sobre a página escura (Key decision 7) |
 | Barra mais larga (1.400 px) | a figura abaixo do limite do `Svg` (Key decision 4) |
 
 ## Migration
