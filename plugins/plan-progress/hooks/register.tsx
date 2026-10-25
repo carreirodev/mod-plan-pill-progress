@@ -495,14 +495,13 @@ function addDot(dots: Map<string, string>, cls: string, x: number, y: number) {
   dots.set(cls, `${dots.get(cls) ?? ''}M${x} ${y}h2v2h-2z`)
 }
 
-// the fill is a still grid of 2 px dots, 3 px apart in 7 rows, and brightness streams over it from the head towards
-// the start the way it does on Claude Code's effort slider: a wave of a few brightness steps scrolls left one column
-// per step, and every dot flickers on its own, stepping up and back down to the grid. It is all patterns and masks,
-// so the picture is the same size at any width
+// the fill is a field of still 2 px dots on a 3 px grid of 7 rows, scattered (FILL_SPARSE), and brightness streams over
+// it from the head towards the start the way it does on Claude Code's effort slider: a wave of a few brightness steps
+// scrolls left one column per step, and every dot flickers on its own, stepping up and back down to its rest. The
+// terminal deals the same wave and flicker a cell at a time
 const STREAM_COLS = 233 // the wave's pattern in columns, prime and long, so its loop does not show
 const STREAM_SPEED = 20 // columns a second; a bar at rest (waiting, failed, done) streams at half that
-const STREAM_LEVELS = [0.3, 0.37, 0.44, 0.51] // the grid's brightness at each step of the wave
-const FLICKER_TILE = 173 // columns the flicker classes are dealt over, every dot in exactly one
+const STREAM_LEVELS = [0.3, 0.37, 0.44, 0.51] // the dots' brightness at each step of the wave
 const FLICKER_CLASSES = 24
 const FLICKER_LIFTS = [0, 0.35, 0.6, 0.9]
 // the share of terminal cells that show one bright dot instead of their grid while their flicker is at its top step
@@ -515,6 +514,10 @@ const FLICKER_FADE: [number, number][] = [[0, 0], [0.15, 0], [0.5, 0.45], [0.8, 
 // brightness where the progress starts, and under the title all along, so the title reads over them at AA
 const FILL_FAINT = 0.5
 const FILL_FADE: [number, number][] = [[0, FILL_FAINT], [0.67, 1], [1, 1]]
+// the share of the grid's places that hold a dot: FILL_SPARSE under the title and where the progress starts, rising (as
+// STREAM_FADE does, squared, so it stays thin for longer) to FILL_DENSE from two thirds of the way to the head
+const FILL_SPARSE = 0.15
+const FILL_DENSE = 0.7
 // mixed better than hash for the few hundred values the stream takes: with it the wave comes out as it was measured
 // against the slider
 const streamHash = (a: number, b: number, k: number) => {
@@ -566,45 +569,33 @@ const STREAM_WAVE = (() => {
   })
   return `<g stroke="#fff" stroke-width="${TRACK_H}">${runs.join('')}</g>`
 })()
-// the flicker: each class a pattern of its dots over the tile, and a timeline of lifts (a random walk over
-// FLICKER_LIFTS, each held 50 to 300 ms, back at the grid now and then) of its own length and start. Every time in
-// it is a whole number of the wave's 50 ms steps: a change anywhere in the picture redraws all of it, and on one beat
-// the 24 classes and the wave redraw it 20 times a second instead of at nearly every frame (half the CPU)
+// the flicker: each dot is dealt one of the classes, and each class has a timeline of lifts (a random walk over
+// FLICKER_LIFTS, each held 50 to 300 ms, back at rest now and then) of its own length and start. Every time in it is
+// a whole number of the wave's 50 ms steps: a change anywhere in the picture redraws all of it, and on one beat the 24
+// classes and the wave redraw it 20 times a second instead of at nearly every frame (half the CPU)
 const FLICKER_TICK = 0.05
-const FLICKER = (() => {
-  const of = Array.from({ length: 7 }, (_, r) => Array.from({ length: FLICKER_TILE }, (_, c) => Math.floor(streamHash(c, r, 302) * FLICKER_CLASSES)))
-  return Array.from({ length: FLICKER_CLASSES }, (_, k) => {
-    let d = ''
-    let last: [number, number] | null = null
-    for (let r = 0; r < 7; r++) {
-      for (let c = 0; c < FLICKER_TILE; c++) {
-        if (of[r]?.[c] !== k) continue
-        d += `${last ? `m${c * 3 - last[0]} ${r * 3 - last[1]}` : `M${c * 3} ${r * 3}`}h2v2h-2z`
-        last = [c * 3, r * 3]
-      }
+const FLICKER = Array.from({ length: FLICKER_CLASSES }, (_, k) => {
+  // in ticks; a frame that would hold the level it already has is left out. lifts keeps the same timeline as [tick,
+  // level] pairs for the terminal, which plays it a cell at a time
+  const length = Math.round((2.3 + 2.4 * streamHash(k, 1, 11)) / FLICKER_TICK)
+  const frames: string[] = []
+  const lifts: [number, number][] = []
+  let level = 0
+  let shown = -1
+  for (let t = 0, i = 0; t < length - 1; i++) {
+    if (level !== shown) {
+      frames.push(`${+((t / length) * 100).toFixed(3)}%{opacity:${FLICKER_LIFTS[level]}}`)
+      lifts.push([t, level])
     }
-    // in ticks; a frame that would hold the level it already has is left out. lifts keeps the same timeline as [tick,
-    // level] pairs for the terminal, which plays it a cell at a time
-    const length = Math.round((2.3 + 2.4 * streamHash(k, 1, 11)) / FLICKER_TICK)
-    const frames: string[] = []
-    const lifts: [number, number][] = []
-    let level = 0
-    let shown = -1
-    for (let t = 0, i = 0; t < length - 1; i++) {
-      if (level !== shown) {
-        frames.push(`${+((t / length) * 100).toFixed(3)}%{opacity:${FLICKER_LIFTS[level]}}`)
-        lifts.push([t, level])
-      }
-      shown = level
-      t += Math.max(1, Math.round((0.07 + 0.23 * streamHash(k, i, 13)) / FLICKER_TICK))
-      const u = streamHash(k, i, 15)
-      level = u < 0.4 ? Math.max(0, level - 1) : u < 0.8 ? Math.min(3, level + 1) : 0
-    }
-    const delay = Math.round(streamHash(k, 2, 16) * length)
-    const css = `.q${k}{opacity:0;animation:q${k} ${(length * FLICKER_TICK).toFixed(2)}s step-end infinite;animation-delay:calc(var(--f) - ${(delay * FLICKER_TICK).toFixed(2)}s)}@keyframes q${k}{${frames.join('')}}`
-    return { d, css, lifts, length, delay }
-  })
-})()
+    shown = level
+    t += Math.max(1, Math.round((0.07 + 0.23 * streamHash(k, i, 13)) / FLICKER_TICK))
+    const u = streamHash(k, i, 15)
+    level = u < 0.4 ? Math.max(0, level - 1) : u < 0.8 ? Math.min(3, level + 1) : 0
+  }
+  const delay = Math.round(streamHash(k, 2, 16) * length)
+  const css = `.q${k}{opacity:0;animation:q${k} ${(length * FLICKER_TICK).toFixed(2)}s step-end infinite;animation-delay:calc(var(--f) - ${(delay * FLICKER_TICK).toFixed(2)}s)}@keyframes q${k}{${frames.join('')}}`
+  return { css, lifts, length, delay }
+})
 const FLICKER_CSS = FLICKER.map(f => f.css).join('')
 // the step of FLICKER_LIFTS flicker class k is at ms into the plan, where its timeline in the desktop's picture is then
 function liftStep(k: number, ms: number): number {
@@ -845,18 +836,37 @@ function drawTrack(p: Plan, W: number, zone = 0, now = 0): Track {
       `<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="url(#${id}g)"/></mask>`
     )
   }
-  // without the twinkle the flicker goes as a whole: its dots get their resting opacity from its stylesheet alone, so
-  // patterns left without it would draw every one of them bright
+  // the dots: a place on the grid holds one where the bar's own hash (seedOf) falls under the share there, FILL_SPARSE
+  // under the title and rising along the progress. The share at a place behind the head only falls as the head moves
+  // on, so a dot there may go but never comes or moves, and a redraw finds every dot where it stood. Each dot is dealt
+  // a flicker class, and each class's dots are one path, drawn once and used twice: for the dots' resting brightness,
+  // and for the class's flicker over it
+  const seed = seedOf(p.id)
+  const share = (x: number) => (x < zone ? FILL_SPARSE : FILL_SPARSE + (FILL_DENSE - FILL_SPARSE) * fadeAt(STREAM_FADE, Math.min(1, (x - zone) / Math.max(1, fx - zone))) ** 2)
+  const dots: string[] = Array.from({ length: FLICKER_CLASSES }, () => '')
+  const lastDot: ([number, number] | null)[] = dots.map(() => null)
+  for (let r = 0; r < 7; r++) {
+    const y = 1 + r * 3
+    for (let c = 0; c * 3 < span; c++) {
+      const x = c * 3
+      if (streamHash(c + seed, r, 67) >= share(x + 1)) continue
+      const k = Math.floor(streamHash(c + seed, r, 302) * FLICKER_CLASSES)
+      const was = lastDot[k]
+      dots[k] += `${was ? `m${x - was[0]} ${y - was[1]}` : `M${x} ${y}`}h2v2h-2z`
+      lastDot[k] = [x, y]
+    }
+  }
   const streamDefs =
     fadeMask('fade', FILL_FADE) +
     (isTwinkling ? fadeMask('kfade', FLICKER_FADE) : '') +
-    `<pattern id="dg" width="3" height="3" y="1" patternUnits="userSpaceOnUse"><rect width="2" height="2" fill="${rgb(light)}"/></pattern>` +
+    `<g id="dt">${dots.map((d, k) => (d ? `<path id="d${k}" d="${d}"/>` : '')).join('')}</g>` +
     `<pattern id="wp" width="${STREAM_COLS * 3}" height="${H}" patternUnits="userSpaceOnUse">${STREAM_WAVE}</pattern>` +
-    `<mask id="wave" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect class="wm" width="${(span + STREAM_COLS * 3 + 3).toFixed(1)}" height="${H}" fill="url(#wp)"/></mask>` +
-    (isTwinkling ? FLICKER.map((f, k) => `<pattern id="fp${k}" width="${FLICKER_TILE * 3}" height="21" y="1" patternUnits="userSpaceOnUse"><path class="q${k}" fill="${rgb(light)}" d="${f.d}"/></pattern>`).join('') : '')
+    `<mask id="wave" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect class="wm" width="${(span + STREAM_COLS * 3 + 3).toFixed(1)}" height="${H}" fill="url(#wp)"/></mask>`
+  // without the twinkle the flicker goes as a whole: its dots get their resting opacity from its stylesheet alone, so
+  // classes left without it would draw every one of them bright
   const stream =
-    `<g mask="url(#fade)"><g mask="url(#wave)"><rect width="${span.toFixed(1)}" height="21" fill="url(#dg)"/></g></g>` +
-    (isTwinkling ? `<g mask="url(#kfade)">${FLICKER.map((_, k) => `<rect width="${span.toFixed(1)}" height="${H}" fill="url(#fp${k})"/>`).join('')}</g>` : '')
+    `<g mask="url(#fade)"><g mask="url(#wave)"><use href="#dt" fill="${rgb(light)}"/></g></g>` +
+    (isTwinkling ? `<g mask="url(#kfade)" fill="${rgb(light)}">${dots.map((d, k) => (d ? `<use class="q${k}" href="#d${k}"/>` : '')).join('')}</g>` : '')
 
   const took = stepTimes(p)
   const markList: Mark<string>[] = []

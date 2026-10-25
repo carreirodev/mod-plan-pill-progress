@@ -151,9 +151,10 @@ O Impact da tarefa autoriza: "os casos de `regress.mjs` que conferem a grade de 
 - `fill_stream_still_grid_wave_and_flicker` vira `fill_stream_still_dots_wave_and_flicker`: os pontos parados, a onda que desliza uma coluna por passo sobre um padrão que a cobre uma vez, cada ponto numa classe só, as linhas do tempo no ritmo de 50 ms, tudo atrasado por `--f`/`--w`, e o movimento reduzido parando tudo continuam conferidos; sai só a grade regular
 - `fill_stream_same_size_at_any_width` sai: a Key decision 4 diz que o desenho ponto a ponto cresce com a largura; quem guarda o limite agora é C25
 - `fill_stream_reaches_the_fill_during_a_glide_back`: continua conferindo que o preenchimento que encolhe nunca fica sem pontos; muda só onde ele lê os pontos
-- `twinkle_off_draws_the_fill_still`: lia `url(#dg)`; passa a ler os pontos. O teto de 8.000 caracteres fica
-- `done_bar_streams_at_half_speed`: lia os 24 retângulos de ladrilho; passa a ler os 24 usos das classes
-- `marks_show_in_the_light_theme`: se o leitor do gradiente precisar acompanhar o começo novo do gradiente, só o leitor muda; o limite de 3:1 fica
+- `twinkle_off_draws_the_fill_still`: lia `url(#dg)`; passa a ler os pontos. O teto de 8.000 caracteres fica, contado sem o caminho dos pontos: ele guardava o cintilar fora da figura parada, e o caminho dos pontos cresce com a largura (Key decision 4; a figura parada de 780 px tem 8.845 caracteres, 5.322 deles de pontos)
+- `done_bar_streams_at_half_speed`: lia os 24 retângulos de ladrilho; passa a ler os usos das classes, um por classe que tem pontos. O plano ganha um passo feito, porque um plano novo só tem os pontos ralos do trecho do título
+- `marks_show_in_the_light_theme`: passou sem mudança
+- `more_agents_line_fits_a_narrow_strip`: usava um título longo ao lado da barra para estreitar a linha de agentes a 120 px; sem a coluna do título, a linha mais estreita é a do VS Code com 30 colunas (120 px, a mesma largura), e o desktop com 40 colunas fica no lugar das 60
 
 ## Swept
 
@@ -170,3 +171,7 @@ O Impact da tarefa autoriza: "os casos de `regress.mjs` que conferem a grade de 
 ## Handoff
 
 Pela conta do orçamento, cada fatia sozinha já chega perto de 150k, porque todas leem os mesmos dois arquivos grandes (`register.tsx` com 260 KB e `regress.mjs` com 319 KB; o tamanho do módulo já está no WPC-243). A conta não distingue os agrupamentos, então o corte fica onde o código lido muda: o lote 1 é S1 + S2 (a geometria de `drawTrack` e o `AbovePrompt` fora do terminal, mais a superfície `vscode` do motor simulado); o lote 2 é S3 + S4 (o desenho dos pontos, a versão e os READMEs). O lote 1 é construído nesta sessão; a passagem para um agente novo antes do lote 2 só acontece se o contexto daqui não comportar o lote 2.
+
+- Onde o corte caiu: o lote 1 (C1-C9, C11-C16; C10 ficou para o lote 2, porque depende do brilho dos pontos sob o título) fechou em `82d5844`. O lote 2 seguiu nesta mesma sessão, sem passagem
+- O que o usuário decidiu durante a construção: nada novo
+- O que foi abandonado: os pontos como máscara sobre os ladrilhos de hoje (o ladrilho repete a grade inteira e os pontos viriam duas vezes); o caminho único por classe ficou no lugar

@@ -6,7 +6,7 @@ Barras de progresso ao vivo acima do campo de entrada do Claude Code. O Claude d
 
 Baseado no plan-progress de Kirill Serditov, sob a licença MIT.
 
-- Uma linha por tarefa: estado, título, barra, porcentagem, botão de fechar
+- Uma linha por tarefa: no desktop e no VS Code, estado, a barra com o título dentro, porcentagem, botão de fechar; no terminal, estado, título, barra, porcentagem, botão de fechar
 - A etiqueta na barra mostra a etapa e o passo atuais; ao passar o mouse, o tempo decorrido
 - Etapas são cápsulas e passos são pontos; ao passar o mouse sobre um já alcançado, mostra quanto tempo levou, e sobre um à frente, o que começa ali
 - Uma barra concluída fica verde, mostra o tempo total e fica até ser fechada; com `/plan-progress-autoclose` ativado, some após `doneBarSeconds` (30 s por padrão, em `/config`)
@@ -20,9 +20,9 @@ Baseado no plan-progress de Kirill Serditov, sob a licença MIT.
 - O rodapé mostra a velocidade com que a conversa principal escreve, `⚡ N tok/s`; subagentes não contam
 - O ⚙ ao lado (no app de desktop e no terminal em tela cheia) abre uma janela de configurações: efeitos, fechamento automático e seus segundos, sons, o próprio número, a versão do mod e a busca por atualizações; `/plan-progress-settings` a abre em qualquer lugar. A janela usa o idioma do `/config`; se não houver, o do app ou o do sistema
 - Atualizações: clicar na versão na janela de configurações procura uma versão nova, e «Atualizar» a instala e recarrega o mod na hora (se a recarga não funcionar, pede para reiniciar). A cada 6 horas o mod também verifica sozinho e marca o ⚙ com 🔹 (● no terminal) quando sai uma versão nova. Cada verificação é uma única requisição à API do GitHub (`api.github.com/repos/carreirodev/mod-plan-pill-progress/releases`), sem dados da conta ou da sessão; desligue em «Procurar atualizações» na janela ou com `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. Uma cópia instalada de uma pasta não é verificada
-- Funciona no app de desktop e no terminal
+- Funciona no app de desktop, na extensão do VS Code e no terminal
 - No terminal a barra segue o modo claro ou escuro do GNOME com o tema `auto` e usa as cores do tema ativo do Omarchy
-- No terminal o preenchimento é a grade de pontos do desktop, com a mesma onda de luz correndo sobre ela
+- No terminal o preenchimento é feito de pontos em braille, esparsos no começo e densos perto da etiqueta, com a mesma onda de luz do desktop correndo sobre eles
 - No terminal a barra, a etiqueta e as linhas dos subagentes têm pontas redondas, e cada linha um robô antes do número, no WezTerm, no Ghostty (e nos terminais feitos sobre ele, como o noctty) e no kitty, e com um tema do Omarchy; nos outros terminais ficam as pontas retas e só o número, porque a fonte pode não ter esses símbolos
 
 ## Instalação

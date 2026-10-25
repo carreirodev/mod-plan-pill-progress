@@ -6,7 +6,7 @@ Live progress bars above the Claude Code prompt. Claude splits a task into stage
 
 Based on plan-progress by Kirill Serditov, under the MIT license.
 
-- One row per task: state, title, bar, percent, close button
+- One row per task: on the desktop and in VS Code, state, a bar with the title inside it, percent, close button; in the terminal, state, title, bar, percent, close button
 - The pill on the bar shows the current stage and step; hover it for the time spent so far
 - Stages are capsules, steps are dots; hover a passed one to see how long it took, one ahead to see what starts there
 - A finished bar turns green, shows the total time and stays until it is closed; with `/plan-progress-autoclose` on, it leaves after `doneBarSeconds` (30 s by default, in `/config`)
@@ -20,9 +20,9 @@ Based on plan-progress by Kirill Serditov, under the MIT license.
 - The footer shows how fast the main conversation writes, `⚡ N tok/s`; subagents are not counted
 - The ⚙ next to it (in the desktop app and the fullscreen terminal) opens a settings window: effects, auto-close and its seconds, sounds, the figure itself, the mod's version and the update check; `/plan-progress-settings` opens it anywhere. The window speaks the language set in `/config`, else the app's, else the system's
 - Updates: the version in the settings window, pressed, looks for a newer release, and Update installs it and reloads the mod in place (if the reload does not take, it asks for a restart). Once every 6 hours the mod also checks by itself and marks the ⚙ with 🔹 (● in the terminal) when a new version is out. A check is one request to the GitHub API (`api.github.com/repos/carreirodev/mod-plan-pill-progress/releases`), with no account or session data in it; turn it off with Check for updates in the window or with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. A copy installed from a folder is not checked
-- Works in the desktop app and in the terminal
+- Works in the desktop app, in the VS Code extension and in the terminal
 - In the terminal the bar follows a light or dark GNOME desktop with the `auto` theme, and takes the colors of the active Omarchy theme
-- In the terminal the fill is the desktop's grid of dots, with the same wave of light streaming over it
+- In the terminal the fill is braille dots, sparse at the start and dense near the pill, with the desktop's wave of light streaming over them
 - In the terminal the bar, its pill and the subagent rows have round ends, and each row a bot before its number, in WezTerm, Ghostty (and terminals built on it, such as noctty) and kitty, and with an Omarchy theme; other terminals keep square ends and the bare number, as their font may lack the glyphs
 
 ## Install
