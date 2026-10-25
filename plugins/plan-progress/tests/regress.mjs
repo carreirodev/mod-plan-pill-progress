@@ -5957,8 +5957,8 @@ const C = {
       seen.push(`${cols} columns: ${run} px of progress, name ${named}, round dot ${dot}`)
       ok &&= run >= 160 ? named && !dot : dot && !named
     }
-    // the same rule in VS Code: a 70-column panel leaves the pill its name, a 40-column one the round dot
-    for (const cols of [70, 40]) {
+    // the same rule in VS Code (8 px a column off Windows): a 70-column panel leaves the pill its name, a 30-column one the round dot
+    for (const cols of [70, 30]) {
       const F = await boot(file)
       await F.call({ id: 't', title: long, stages: [S('Build', st('A', 'active'), 'B'), S('Ship', 'C')] })
       const track = trackOf(await atCols(F, cols, 'vscode'), long)
@@ -6015,33 +6015,68 @@ const C = {
     return [`zone ${zone.toFixed(1)}; areas ${areas.map(([k, m]) => `${k}@${m.toFixed(1)}`).join(' ')} with tips ${placed}; clock at ${clockAt}, pill at ${pillOf(v.track).x}`, ok]
   },
   async vscode_row_fits_its_columns() {
-    // C15: in VS Code (bodyColumns N) the bar and the rest of its row (140 px, 180 with the fold arrow) take at most
-    // N × 6.5 px wherever the bar keeps 120 px or more; at 30 columns the bar keeps 120 px; the line between bars never
-    // runs past N × 6.5 px; bodyColumns 0 counts as 100
+    // C15 (1.4.1): in VS Code (bodyColumns N) a column is 12 px on Windows (an install on a drive letter) and 8 px
+    // elsewhere. The bar takes all of N columns but the rest of its row (140 px, 180 with the fold arrow), at most 1400
+    // px, wherever that leaves it 120 px or more; else it keeps 120 px. The line between bars never runs past N columns;
+    // bodyColumns 0 counts as 100
     const seen = []
     let ok = true
-    const F = await boot(file)
-    await create(F, 'a', three(), 'Docs')
-    await create(F, 'b', three(), 'Refactor payments')
-    for (const n of [30, 40, 60, 100, 200, 300, 0]) {
-      const svgs = await atCols(F, n, 'vscode')
-      const W = trackOf(svgs, 'Docs').width
-      const line = svgs.find(s => s.alt === 'divider').width
-      const cols = n || 100
-      seen.push(`${n}: bar ${W}, line ${line}`)
-      ok &&= line <= cols * 6.5 && (cols * 6.5 - 140 >= 120 ? W + 140 <= cols * 6.5 : W === 120)
-      if (n === 30) ok &&= W === 120
-      if (n === 0) ok &&= W === trackOf(await atCols(F, 100, 'vscode'), 'Docs').width
-    }
-    const G = await boot(file)
-    await create(G)
-    await G.spawn('ag1', 'Scan routes')
-    for (const n of [47, 60, 100]) {
-      const W = trackOf(await atCols(G, n, 'vscode'), 'Task').width
-      seen.push(`${n} with the arrow: bar ${W}`)
-      ok &&= W >= 120 && W + 180 <= n * 6.5
+    for (const [system, root, px] of [['Windows', 'C:\\Users\\x\\.claude\\plugins\\cache\\plan-progress', 12], ['elsewhere', undefined, 8]]) {
+      const held = globalThis.ROOT
+      if (root) globalThis.ROOT = root
+      try {
+        const room = (n, reserve) => Math.floor((n || 100) * px) - reserve
+        const want = (n, reserve) => (room(n, reserve) >= 120 ? Math.min(1400, room(n, reserve)) : 120)
+        const F = await boot(file)
+        await create(F, 'a', three(), 'Docs')
+        await create(F, 'b', three(), 'Refactor payments')
+        for (const n of [20, 30, 40, 60, 100, 200, 0]) {
+          const svgs = await atCols(F, n, 'vscode')
+          const W = trackOf(svgs, 'Docs').width
+          const line = svgs.find(s => s.alt === 'divider').width
+          seen.push(`${system} ${n}: bar ${W}, line ${line}`)
+          ok &&= W === want(n, 140) && line <= (n || 100) * px && (W === 120 || W + 140 <= (n || 100) * px)
+        }
+        const G = await boot(file)
+        await create(G)
+        await G.spawn('ag1', 'Scan routes')
+        for (const n of [25, 40, 60, 100]) {
+          const W = trackOf(await atCols(G, n, 'vscode'), 'Task').width
+          seen.push(`${system} ${n} with the arrow: bar ${W}`)
+          ok &&= W === want(n, 180) && (W === 120 || W + 180 <= n * px)
+        }
+      } finally {
+        if (root) {
+          if (held === undefined) delete globalThis.ROOT
+          else globalThis.ROOT = held
+        }
+      }
     }
     return [seen.join('; '), ok]
+  },
+  async vscode_bar_goes_alone() {
+    // C30 (1.4.1): VS Code places no Box absolutely, shows no hover and draws a picture as a plain image, so there the
+    // bar goes alone in its track: no hover layer, no clock, no Box placed absolutely anywhere in the band, and the fold
+    // arrow is a text Button. The desktop keeps all of them
+    const look = async (F, surface) => {
+      const all = walkAll(await F.band(surface))
+      const track = all.find(n => n.type === 'Box' && n.props.key === 'track-t')
+      const inTrack = walkAll(track).filter(n => n.type === 'Svg')
+      return {
+        pictures: inTrack.length,
+        interactive: all.some(n => n.type === 'Svg' && n.props.isInteractive),
+        placed: all.some(n => n.type === 'Box' && n.props.position === 'absolute'),
+        clock: inTrack.some(n => n.props.source.includes('class="kc0 ')),
+        fold: all.find(n => n.type === 'Button' && n.props.key === 'fold-t')?.props.label,
+      }
+    }
+    const F = await boot(file)
+    await create(F)
+    await F.spawn('ag1', 'Scan routes')
+    const code = await look(F, 'vscode')
+    const desk = await look(F, 'desktop')
+    const ok = code.pictures === 1 && !code.interactive && !code.placed && !code.clock && code.fold === '⌃' && desk.pictures === 3 && desk.interactive && desk.placed && desk.clock && desk.fold !== undefined && unpadded(desk.fold) === ''
+    return [`VS Code: ${code.pictures} picture in the track, hover layer ${code.interactive}, placed Boxes ${code.placed}, clock ${code.clock}, fold "${code.fold}"; desktop: ${desk.pictures} pictures, hover layer ${desk.interactive}, placed Boxes ${desk.placed}, clock ${desk.clock}, fold "${desk.fold}"`, ok]
   },
   async desktop_row_counts_8_px_a_column() {
     // C16: on the desktop the bar is max(120, min(1400, max(320, 8 × N) − 140 − 40 with the fold arrow)) px
@@ -6280,7 +6315,10 @@ const C = {
     const rowEn = en.split('\n').find(l => /desktop and in VS Code.*\bstate\b.*\bbar with the title inside\b.*\bpercent\b.*\bclose button\b/.test(l))
     const rowPt = pt.split('\n').find(l => /desktop e no VS Code.*\bestado\b.*\bbarra com o título dentro\b.*\bporcentagem\b.*\bfechar\b/.test(l))
     const grid = /grid of dots/i.test(en) || /grade de pontos/i.test(pt)
-    return [`version ${version}; row in English ${!!rowEn}, in Portuguese ${!!rowPt}; a grid of dots still named ${grid}`, version === '1.4.0' && !!rowEn && !!rowPt && !grid]
+    // 1.4.0 brought the new row; a later release (1.4.1 fixed VS Code's widths) keeps it
+    const [major, minor] = version.split('.').map(Number)
+    const atLeast = major > 1 || (major === 1 && minor >= 4)
+    return [`version ${version}; row in English ${!!rowEn}, in Portuguese ${!!rowPt}; a grid of dots still named ${grid}`, atLeast && !!rowEn && !!rowPt && !grid]
   },
   async dollar_goes_only_to_top_level_functions(E) {
     // the engine scans a module before it loads it and refuses one that hands a hook's $ to anything but a function

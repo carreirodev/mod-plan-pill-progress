@@ -75,9 +75,10 @@ const TITLE_PAD = 12
 const TITLE_SHARE = 0.3
 // the pill names its stage from this much room for the progress on; below it, it is a round dot with the stage number
 const PILL_NAME_W = 160
-// VS Code counts the band's columns in the advance of its editor font, often narrower than the desktop's 8 px, and
-// breaks a row that does not fit: there the row is sized at less, and a little room left after the ✕ costs nothing
-const VSCODE_COL_PX = 6.5
+// VS Code counts the band's columns by the wider of "0" and "─" in its panel's font, and breaks a row that does not
+// fit. The "─" comes from a fallback font: wide on Windows (about 12 px a column on the author's machine), narrower
+// elsewhere (about 8 px, not measured). The row is sized at that much a column
+const VSCODE_COL_PX = { windows: 12, other: 8 }
 
 const RULES = `# Progress bars
 Tasks needing more than ~3 edits or commands get a bar via ${TOOL}: create it once with the full breakdown (2-7 stages of steps {title}, or kind "todo" for one flat list; titles of at most 4 words, in the user's language; the first open step becomes active), then move it with short calls: {id, next:true} when the active step is finished, or {id, done:[...], active:"..."}, {id, failed:"...", note}. When the plan changes, resend stages under the same id and title; steps sent without a status keep their done by title. Send state "needs_input" with a note before asking the user to decide. Never describe the bars to the user.`
@@ -3841,11 +3842,13 @@ export const register: Register = (on, options) => {
     const { Box, Button, Text } = t
     const Svg = 'Svg' in t ? t.Svg : null
     // every bar has the same width, its title inside it, and takes all the row has after the glyph, the percent and
-    // the close button (~126 px), so rows line up. The desktop reports ~8 CSS px per column; VS Code counts its columns
-    // in the editor font's advance, often less, and breaks a row that runs past the band, so there it is sized at
-    // VSCODE_COL_PX, with no floor that could take it past the band
+    // the close button (~126 px), so rows line up. The desktop reports ~8 CSS px per column; VS Code's columns are as
+    // wide as its system's VSCODE_COL_PX (a Windows install sits on a drive letter), and it breaks a row that runs past
+    // the band, so there no floor takes the row past it
+    const isVscode = e.surface === 'vscode'
+    const colPx = /^[A-Za-z]:/.test($.plugin.root) ? VSCODE_COL_PX.windows : VSCODE_COL_PX.other
     const cols = e.props.bodyColumns || 100
-    const total = e.surface === 'vscode' ? Math.floor(cols * VSCODE_COL_PX) : Math.max(320, cols * 8)
+    const total = isVscode ? Math.floor(cols * colPx) : Math.max(320, cols * 8)
     await read($, tick)
     // read for its redraws only: the footer's figure changing asks the whole session to draw again, and a band that read
     // nothing changed is handed back as it was last drawn. Rebuilt from that very source, a picture starts its glide
@@ -3909,7 +3912,9 @@ export const register: Register = (on, options) => {
                 <Box flexDirection="column" flexShrink={0}>
                   <Box key={`track-${p.id}`}>
                     <Svg source={liveSource(track.base, now)} alt={alt} width={trackW} height={TRACK_H} />
-                    {track.clock ? (
+                    {/* VS Code places no Box absolutely, shows no hover and draws a picture as a plain image: there the
+                        clock and the hover layer would only stand beside the bar, as wide as it, so the bar goes alone */}
+                    {track.clock && !isVscode ? (
                       // the pill's clock, shown by the desktop's own hover of this keyed Box: the pointer over the frame
                       // below is over the Box too. Under the frame, so the checkpoint tips still take the pointer; not
                       // placed itself, or the desktop would lift it out as a hover card
@@ -3919,9 +3924,11 @@ export const register: Register = (on, options) => {
                         </Box>
                       </Box>
                     ) : null}
-                    <Box position="absolute" top={0} left={0}>
-                      <Svg source={hover} alt={timesAlt(p)} width={trackW} height={TRACK_H} isInteractive />
-                    </Box>
+                    {isVscode ? null : (
+                      <Box position="absolute" top={0} left={0}>
+                        <Svg source={hover} alt={timesAlt(p)} width={trackW} height={TRACK_H} isInteractive />
+                      </Box>
+                    )}
                   </Box>
                   {strips}
                 </Box>
@@ -3936,7 +3943,8 @@ export const register: Register = (on, options) => {
               {hasFold ? (
                 <Box width={5} flexShrink={0}>
                   {canFold(p, now, stripBudget(list.length)) ? (
-                    Svg ? (
+                    // in VS Code the blank Button would stand beside the chevron instead of over it: the text one there
+                    Svg && !isVscode ? (
                       <Box key={`foldchip-${p.id}`} width={5} height={1} justifyContent="center" alignItems="center">
                         <Svg source={foldChip(!!p.isFolded)} alt={p.isFolded ? 'show the agents' : 'fold the agents'} width={FOLD_W} height={FOLD_H} />
                         <Box position="absolute" top={0} left={0} right={0} bottom={0} justifyContent="center" alignItems="center">
