@@ -39,7 +39,7 @@ Decisões tomadas na construção (reversíveis, registradas antes do código qu
 
 | Decisão | Forma | Alternativa rejeitada |
 | --- | --- | --- |
-| A barra deita a página do tema por baixo do trilho, como as linhas dos agentes | `<rect class="pg">` dentro da cápsula; `.pg` com `SCHEMES.dark.page`, e `SCHEMES.light.page` no tema claro | o trilho translúcido sobre o fundo do app, como hoje: o contraste do título (C10) dependeria de uma cor que o mod não conhece |
+| A barra deita a página do tema por baixo do trilho, como as linhas dos agentes | `<rect class="pg">` dentro da cápsula; `.pg` com `SCHEMES.dark.page`, e `SCHEMES.light.page` no tema claro. Desde a 1.4.3, `SCHEMES.dark.page` em qualquer tema (C33) | o trilho translúcido sobre o fundo do app, como hoje: o contraste do título (C10) dependeria de uma cor que o mod não conhece |
 | A dica do título cabe na barra, como as outras dicas | o texto da dica é `fitLabel(título, W − 16, 11)`; um título mais largo que a barra inteira aparece cortado na dica, e inteiro no texto alternativo | uma dica que passa da barra: a camada de hover é do tamanho da barra e cortaria a dica de qualquer jeito |
 | O corte do título pode deixar menos de 3 letras | `fitLabel` ganha um mínimo opcional (padrão 3, como hoje); o título usa 1 | o mínimo de 3 de hoje: num trecho estreito, "WWW…" passa da margem de 12 px e entra no progresso |
 | O cintilar vai nos próprios pontos | os pontos de cada uma das 24 classes do cintilar formam um `path`, desenhado uma vez em `<defs>` e usado duas vezes: pelo brilho de base e pela classe que cintila | os 24 padrões de ladrilho de hoje sob uma máscara de pontos: o ladrilho repete a grade inteira, e os pontos teriam de vir duas vezes |
@@ -141,6 +141,12 @@ Proof: `ONLY=widest_bar_stays_under_the_svg_limit node regress.mjs`
 **C26** - No tema claro, os pontos têm as cores do preenchimento da 1.3.0 em cada estado (congeladas no teste a partir do build da 1.3.0), e nenhuma regra do tema claro muda a cor deles
 Proof: `ONLY=light_theme_dots_keep_their_colours node regress.mjs`
 
+**C33** - (1.4.3) No desktop e no VS Code, nos quatro estados, a barra deita a página escura (`SCHEMES.dark.page`) por baixo do título e dos pontos em qualquer tema, com o título na cor de texto do tema escuro, e a figura da barra não tem regra de tema nenhuma (`prefers-color-scheme`). Quem diz "claro" ou "escuro" na figura é o sistema, não o app: o Windows no modo claro sob o Cursor num tema escuro deixava a barra branca, com os pontos quase sumindo. C10 e o contraste dos marcos continuam conferidos, agora sobre essa página só
+Proof: `ONLY=track_page_stays_dark_in_a_light_theme node regress.mjs`
+
+**C34** - (1.4.3) No desktop e no VS Code, as linhas dos agentes deitam a página escura por baixo da cápsula também no tema claro, com o nome, o tempo e a palavra da ferramenta nas cores do tema escuro, em AA sobre a cor de cada estado. O robô e o número à esquerda, sobre o fundo do app, continuam seguindo o tema, em AA sobre as páginas clara e escura do app
+Proof: `ONLY=desktop_strip_text_reads_in_light_and_dark node regress.mjs`
+
 ### S4 - O que não muda e a versão · 5 files · 593 KB · ~148k
 
 **C27** - No terminal, a linha e a barra são desenhadas como na 1.3.0: a árvore e cada célula das figuras do terminal, nos quatro estados, nas larguras 40, 120 e 200, em tela cheia ou não, com o cintilar ligado e desligado e com uma barra com agentes, batem com o hash tirado do build da 1.3.0; e os casos do terminal de `regress.mjs` passam sem mudança
@@ -168,6 +174,7 @@ O Impact da tarefa autoriza: "os casos de `regress.mjs` que conferem a grade de 
 - `done_bar_streams_at_half_speed`, depois do Verifier: passou a fixar a volta da onda em andamento em 11,65 s, a da 1.3.0, e não só a razão de 2 entre parada e em andamento
 - `more_agents_line_fits_a_narrow_strip`: usava um título longo ao lado da barra para estreitar a linha de agentes a 120 px; sem a coluna do título, a linha mais estreita é a do VS Code com 30 colunas (120 px, a mesma largura), e o desktop com 40 colunas fica no lugar das 60
 - Na 1.4.2 (a porcentagem na pílula e a linha do VS Code que não quebra): `row_is_mark_bar_percent_close` virou `row_is_mark_bar_close`; as larguras fixadas em `narrow_bar_has_no_title_zone`, `title_zone_change_redraws_without_a_glide` (820 → 860), `finished_bar_keeps_its_title` (820 → 860), `pill_name_needs_160_px_of_progress`, `strip_tool_word_keeps_its_360_px` (67/68 → 62/63 colunas), `vscode_row_fits_its_columns` e `desktop_row_counts_8_px_a_column` seguiram a reserva nova; `long_pill_labels_keep_the_pill_to_320_px` passou sem mudança no teste, depois de o teto de 320 px passar a incluir a porcentagem
+- Na 1.4.3 (a página escura em qualquer tema, C33): `marks_show_in_the_light_theme` mede os marcos do desktop só sobre a página da figura e exige que ela não tenha regra de tema; `title_reads_in_every_state_and_theme` (C10) lê o tema claro na folha de estilo de base quando não há regra própria dele; `light_theme_dots_keep_their_colours` (C26) passou a exigir nenhuma regra do tema claro, em vez de `.ma .mp .pg .ti`. As classes `mp`/`ma` dos marcos ficam, sem regra que as pinte, porque os casos as usam para achar os marcos. Com as linhas dos agentes escuras (C34), `desktop_strip_text_reads_in_light_and_dark` passou a exigir, no tema claro, texto claro sobre a página escura, em vez de texto escuro sobre a página clara
 
 ## Swept
 
