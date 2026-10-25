@@ -851,8 +851,8 @@ function drawTrack(p: Plan, W: number, zone = 0, now = 0): Track {
       const x = c * 3
       if (streamHash(c + seed, r, 67) >= share(x + 1)) continue
       const k = Math.floor(streamHash(c + seed, r, 302) * FLICKER_CLASSES)
-      const was = lastDot[k]
-      dots[k] += `${was ? `m${x - was[0]} ${y - was[1]}` : `M${x} ${y}`}h2v2h-2z`
+      const prev = lastDot[k]
+      dots[k] += `${prev ? `m${x - prev[0]} ${y - prev[1]}` : `M${x} ${y}`}h2v2h-2z`
       lastDot[k] = [x, y]
     }
   }
