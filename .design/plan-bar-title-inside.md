@@ -28,7 +28,7 @@ Out:
 - O terminal: fica como está, com o título fora da barra e os pontos em braille. O autor pediu só desktop e VS Code, então daqui em diante as superfícies deixam de ser iguais nesse ponto.
 - O cabeçalho "From the plan-progress plugin" e a moldura em volta da faixa no VS Code: quem os desenha é a extensão, não o mod.
 
-Unchanged: a aparência das linhas dos agentes. Elas continuam alinhadas sob a barra, que agora começa logo depois da marca de estado, então começam mais à esquerda e ficam mais largas. Também não mudam a porcentagem, a seta de recolher e o ✕; o relógio que a pílula mostra quando o mouse passa sobre a barra e as dicas dos marcos, que só mudam de posição (Key decision 1); o texto alternativo da barra; o registro `Plan` e as barras salvas por sessão; a janela de configurações.
+Unchanged: a aparência das linhas dos agentes. Elas continuam alinhadas sob a barra, que agora começa logo depois da marca de estado, então começam mais à esquerda e ficam mais largas. Também não mudam a seta de recolher e o ✕ (a porcentagem também não mudava, até ir para dentro da pílula na 1.4.2, Key decision 6); o relógio que a pílula mostra quando o mouse passa sobre a barra e as dicas dos marcos, que só mudam de posição (Key decision 1); o texto alternativo da barra; o registro `Plan` e as barras salvas por sessão; a janela de configurações.
 
 ## Shape
 
@@ -39,8 +39,9 @@ A alternativa mais pesada é levar o mesmo desenho ao terminal. Ela só ganha se
 ## Key decisions
 
 1. **O título do plano fica dentro da barra, à esquerda, num trecho que só ele usa. O preenchimento começa na ponta esquerda, por baixo do título. A ponta do preenchimento, a pílula, os marcos de etapa e de passo e as dicas correm do fim desse trecho até a ponta direita.** A pílula nunca cobre o título, nem no começo do plano. É a variante B, que o autor escolheu entre três desenhos (Sources). Na A, o título ficava coberto no começo de todo plano; na C, ele mudava de lugar uma vez em cada plano.
-2. **No desktop e no VS Code a linha não tem mais coluna de título. Ela tem marca de estado, barra, porcentagem, seta de recolher e ✕, e a barra fica com toda a sobra.** O terminal continua com a coluna de título dele: a partir daqui as superfícies divergem de propósito.
-3. **No VS Code a linha da barra não quebra em nenhuma largura em que caibam a barra mínima (120 px, o mínimo de hoje) e o resto da linha: com a conta da vscode row, a partir de 22 colunas no Windows e 33 nos outros sistemas (25 e 38 quando a linha tem a seta de recolher).** Abaixo disso, nada cabe numa linha só. O VS Code conta as colunas pela largura do mais largo entre "0" e "─" na fonte do painel (a da interface, não a do editor) e quebra toda linha que não cabe. O mod só recebe o número de colunas, não quantos pixels cada uma tem. Corrigido em 2026-10-25, na 1.4.1, com o autor: a 1.4.0 supôs a fonte do editor e 6,5 px por coluna, e no VS Code do autor, no Windows, a coluna mede cerca de 12 px, então a barra ficou com metade da faixa. Na mesma correção: a extensão não posiciona caixas por cima de outras nem mostra hover, e punha a camada de hover da barra ao lado dela, com a largura dela; no VS Code a barra vai sozinha.
+2. **No desktop e no VS Code a linha não tem mais coluna de título. Ela tem marca de estado, barra, seta de recolher e ✕, e a barra fica com toda a sobra.** Até a 1.4.1 a porcentagem ficava entre a barra e a seta; desde a 1.4.2 ela vai dentro da pílula (Key decision 6). O terminal continua com a coluna de título dele: a partir daqui as superfícies divergem de propósito.
+3. **No VS Code a linha da barra não quebra em largura nenhuma. A barra tem as colunas do painel menos o resto da linha (7 colunas: a marca, dois espaços e o ✕; 13 com a seta de recolher e o espaço dela), e pelo menos 120 px: com a conta da vscode row, a barra passa de 120 px a partir de 19 colunas no Windows e 22 nos outros sistemas (25 e 28 com a seta). Onde as colunas forem mais estreitas que a conta, ou o painel não comportar 120 px, a barra encolhe em vez de a linha quebrar.** O VS Code conta as colunas pela largura do mais largo entre "0" e "─" na fonte do painel (a da interface, não a do editor) e quebra toda linha que não cabe, a menos que a linha diga que não quebra. O mod só recebe o número de colunas, não quantos pixels cada uma tem. Corrigido em 2026-10-25, na 1.4.1, com o autor: a 1.4.0 supôs a fonte do editor e 6,5 px por coluna, e a barra ficou com metade da faixa. Na mesma correção: a extensão não posiciona caixas por cima de outras nem mostra hover, e punha a camada de hover da barra ao lado dela, com a largura dela; no VS Code a barra vai sozinha. Corrigido de novo no mesmo dia, na 1.4.2, com o autor: os 12 px por coluna da 1.4.1 eram uma estimativa; medida na captura do autor (pela altura da barra, 22 px), a coluna tem cerca de 10 px, e a linha quebrava, com a porcentagem e o ✕ embaixo da barra. Como a largura da coluna também muda com o tamanho da fonte do chat, a conta sozinha não basta: a linha passou a não poder quebrar, e a coluna da barra a poder encolher. A extensão desenha a figura do tamanho da caixa dela, sem distorcer.
+6. **No desktop e no VS Code a porcentagem fica dentro da pílula, na ponta direita, até o plano terminar** (desde a 1.4.2, pedido do autor em 2026-10-25). Ela aparece em andamento, aguardando e com erro, e também na cópia da pílula que mostra o relógio quando o mouse passa. Nunca é cortada: num trecho longo, os nomes da etapa e do passo cedem espaço a ela, e a pílula continua com no máximo 320 px. Onde a pílula perderia o nome (menos de 160 px de progresso), ela traz só a porcentagem. No plano concluído, a pílula mostra o tempo total e a porcentagem some. O terminal continua com a porcentagem fora da barra.
 4. **O preenchimento é um campo de pontos espalhados, rarefeito e fraco no começo, mais denso e claro perto da pílula, como o do terminal. Essa rampa corre só sobre o trecho do progresso: sob o título os pontos ficam sempre no nível mais fraco.** Isso refina os desenhos, onde a 4% os pontos sob o título já eram densos. Cada barra tem os seus pontos, cada um num lugar fixo que nunca muda nem se embaralha, nem quando a faixa é redesenhada. O que muda com o avanço é quais pontos aparecem e com que brilho: os de trás podem rarear e enfraquecer conforme a pílula anda. A onda de luz, o cintilar e a versão parada (cintilar desligado, ou movimento reduzido no sistema) continuam. A figura fica abaixo do limite do motor para um `Svg` (131.072 caracteres) mesmo na barra mais larga (1.400 px). A grade de hoje é um padrão que se repete e não cresce com a largura; um desenho ponto a ponto cresce, e é aí que esse limite morde.
 5. **O título se lê com contraste AA sobre o preenchimento, nos dois temas e nos quatro estados (em andamento, aguardando, erro, concluído), em qualquer ponto do progresso.** O nível fraco e fixo sob o título (Key decision 4) é o que garante isso. Adensar ou clarear os pontos ali quebra esta regra.
 
@@ -65,6 +66,7 @@ Derivable from the repository, left to the plan: a cor do título em cada tema, 
 ```
 hoje     ● WPC-245        ╭▒▒▒▒▒▒▒▒▒(Build │ API)·····│·····╮  40%  ✕
 depois   ● ╭WPC-245 ⠂⠄⡀⠂⣀⣠⣤(Build │ API)·····│·····╮  40%  ✕
+1.4.2    ● ╭WPC-245 ⠂⠄⡀⠂⣀⣠⣤(Build │ API  40%)···│·······╮  ✕
             └ título ┘└──────────── progresso ───────────┘
 ```
 
@@ -78,7 +80,7 @@ depois   ● ╭WPC-245 ⠂⠄⡀⠂⣀⣠⣤(Build │ API)·····│···�
 | Duas ou três barras com títulos de tamanhos diferentes | o trecho do título tem a mesma largura em todas, a do título mais longo, então o progresso começa no mesmo ponto e os marcos ficam alinhados, como a coluna de título faz hoje |
 | Título maior que o trecho | cortado com "…", e inteiro ao passar o mouse sobre ele e no texto alternativo |
 | Trecho do progresso com 160 px ou mais | a pílula mostra o nome da etapa, encurtado se precisar, e o passo depois dele se couber |
-| Trecho do progresso com menos de 160 px | a bolinha redonda com o número da etapa, que hoje aparece sempre que a barra inteira tem menos de 360 px |
+| Trecho do progresso com menos de 160 px | a bolinha redonda com o número da etapa, que hoje aparece sempre que a barra inteira tem menos de 360 px. Desde a 1.4.2, uma pílula só com a porcentagem (Key decision 6); concluído, a bolinha com o ✓ |
 | Tema claro | o título na cor de texto do tema claro, e os marcos como hoje |
 | Mouse sobre o trecho do progresso | o relógio na pílula e as dicas dos marcos, como hoje |
 
@@ -87,7 +89,7 @@ Alternatives considered: o título passando por baixo da pílula (variante A) - 
 1. Largura máxima do trecho do título - 30% da barra. Hoje a coluna do título vai até 30% da linha inteira.
 2. Barra estreita demais para "Abc…" caber nesses 30% - a barra fica sem trecho de título, e o título só aparece no texto alternativo.
 3. Dica com o título inteiro - aparece ao passar o mouse sobre o trecho do título, e só quando ele foi cortado.
-4. Onde a pílula vira bolinha - 160 px de progresso. É o mínimo para uma pílula com um nome curto ainda andar pela barra: em andamento ela tem pelo menos uns 70 px, porque precisa caber o relógio.
+4. Onde a pílula perde o nome - 160 px de progresso (até a 1.4.1 ela virava a bolinha com o número da etapa; desde a 1.4.2, a pílula só com a porcentagem). É o mínimo para uma pílula com um nome curto ainda andar pela barra: em andamento ela tem pelo menos uns 70 px, porque precisa caber o relógio.
 
 ### vscode row
 
@@ -95,14 +97,14 @@ Alternatives considered: o título passando por baixo da pílula (variante A) - 
 
 | State | O que a pessoa vê |
 |---|---|
-| Painel estreito, como na captura de 2026-10-25 | uma linha: marca de estado, barra, porcentagem e ✕; a pílula com o nome da etapa quando o progresso tem 160 px (Title zone) |
+| Painel estreito, como na captura de 2026-10-25 | uma linha: marca de estado, barra e ✕, com a porcentagem na pílula (Key decision 6); a pílula com o nome da etapa quando o progresso tem 160 px (Title zone) |
 | Painel redimensionado | a linha se refaz no próximo desenho, sem quebrar, enquanto o painel tiver 40 colunas ou mais (Key decision 3) |
 | Painel largo | o mesmo que no desktop |
 | Barra com agentes | a seta de recolher entra na mesma linha, e as linhas dos agentes ficam embaixo da barra, como no desktop |
 
 Os tipos do motor (2.1.308) dizem que a faixa acima do prompt só existe no terminal e no desktop. A extensão 2.1.310 desenha a faixa mesmo assim, como mostra a captura do autor e o código da extensão. Vale o que a extensão faz.
 
-1. Pixels por coluna no VS Code - 12 px no Windows e 8 px nos outros sistemas (era 6,5 px na 1.4.0; trocado em 2026-10-25, na 1.4.1). O "─" vem de uma fonte reserva, larga no Windows (cerca de 12 px, tirado da captura do autor) e mais estreita fora dele (8 px, estimado, não medido). Errar para menos só deixa a barra mais curta, com sobra depois do ✕; errar para mais quebra a linha.
+1. Pixels por coluna no VS Code - 10 px no Windows e 8 px nos outros sistemas (6,5 px na 1.4.0; 12 px na 1.4.1; 10 px desde a 1.4.2, todos em 2026-10-25). O "─" vem de uma fonte reserva, larga no Windows (cerca de 10 px, medido na captura do autor pela altura da barra) e mais estreita fora dele (8 px, estimado, não medido). Errar para menos só deixa a barra mais curta, com sobra depois do ✕; errar para mais, desde a 1.4.2, só encolhe a barra (até a 1.4.1, quebrava a linha).
 
 ### Scattered fill
 
