@@ -48,7 +48,7 @@ Decisões tomadas na construção (reversíveis, registradas antes do código qu
 
 ### S1 - Título dentro da barra · 2 files · 580 KB · ~145k
 
-**C1** - No desktop, a linha de cada barra traz, nesta ordem, a marca de estado, a figura da barra, a porcentagem, a seta de recolher (só quando há agentes para recolher, como hoje) e o ✕, e nenhum `Text` da linha traz o título
+**C1** - No desktop e no VS Code, a linha de cada barra traz, nesta ordem, a marca de estado, a figura da barra, a porcentagem, a seta de recolher (só quando há agentes para recolher, como hoje) e o ✕, e nenhum `Text` da linha traz o título
 Proof: `ONLY=row_is_mark_bar_percent_close node regress.mjs`
 
 **C2** - O título aparece dentro da figura, num texto em `x = 12`; o trecho do título tem a mesma largura em todas as barras mostradas, a que o título mais longo pede (largura medida no Chromium + 24 px, até 15% acima disso pela folga da medida), e no máximo `floor(0,3 × W)`
@@ -78,7 +78,7 @@ Proof: `ONLY=finished_bar_keeps_its_title node regress.mjs`
 **C10** - Nos quatro estados e nos temas claro e escuro, o título tem contraste de pelo menos 4,5:1 contra o trilho sobre a página do tema, contra o preenchimento sob ele e contra os pontos no brilho mais forte que alcançam sob ele (onda no pico, cintilar incluído)
 Proof: `ONLY=title_reads_in_every_state_and_theme node regress.mjs`
 
-**C11** - Com 160 px ou mais de trecho do progresso, a pílula é a cápsula com o nome da etapa; com menos, é a bolinha redonda com o número da etapa
+**C11** - Com 160 px ou mais de trecho do progresso, a pílula é a cápsula com o nome da etapa; com menos, é a bolinha redonda com o número da etapa, no desktop (46 e 45 colunas) e no VS Code (70 e 40 colunas)
 Proof: `ONLY=pill_name_needs_160_px_of_progress node regress.mjs`
 
 **C12** - Uma linha de agente esconde a palavra da ferramenta numa barra de 356 px e a mostra numa de 364 px: o limite de 360 px continua o mesmo
@@ -92,7 +92,7 @@ Proof: `ONLY=hover_marks_and_clock_follow_the_progress node regress.mjs`
 
 ### S2 - Linha única no VS Code · 3 files · 604 KB · ~151k
 
-**C15** - Na superfície `vscode` com `bodyColumns` = N, a largura da barra mais a reserva (140 px, ou 180 px com a seta) não passa de N × 6,5 px sempre que a barra fica com 120 px ou mais (N = 40, 47 com a seta, 60, 100, 200, 300); com N = 30 a barra fica em 120 px; a divisória entre as barras nunca passa de N × 6,5 px; com `bodyColumns` = 0 vale N = 100
+**C15** - (O piso com a seta é 47 colunas, não as 46 das fontes: pela regra, 120 + 180 = 300 px pede 46,15 colunas de 6,5 px; em aberto para o autor.) Na superfície `vscode` com `bodyColumns` = N, a largura da barra mais a reserva (140 px, ou 180 px com a seta) não passa de N × 6,5 px sempre que a barra fica com 120 px ou mais (N = 40, 47 com a seta, 60, 100, 200, 300); com N = 30 a barra fica em 120 px; a divisória entre as barras nunca passa de N × 6,5 px; com `bodyColumns` = 0 vale N = 100
 Proof: `ONLY=vscode_row_fits_its_columns node regress.mjs`
 
 **C16** - No desktop a barra tem `max(120, min(1400, max(320, 8 × N) − 140 − 40 se há seta))` px, para N = 30, 100, 120 com a seta e 300
@@ -154,6 +154,9 @@ O Impact da tarefa autoriza: "os casos de `regress.mjs` que conferem a grade de 
 - `twinkle_off_draws_the_fill_still`: lia `url(#dg)`; passa a ler os pontos. O teto de 8.000 caracteres fica, contado sem o caminho dos pontos: ele guardava o cintilar fora da figura parada, e o caminho dos pontos cresce com a largura (Key decision 4; a figura parada de 780 px tem 8.845 caracteres, 5.322 deles de pontos)
 - `done_bar_streams_at_half_speed`: lia os 24 retângulos de ladrilho; passa a ler os usos das classes, um por classe que tem pontos. O plano ganha um passo feito, porque um plano novo só tem os pontos ralos do trecho do título
 - `marks_show_in_the_light_theme`: passou sem mudança
+- `fill_stream_still_dots_wave_and_flicker`, além de trocar a grade pelos pontos: o brilho de base agora começa fraco, acima de zero (Key decision 4: os pontos sob o título ficam no nível mais fraco, visíveis), em vez de começar em zero; e as classes de cintilar contadas são as que têm pontos (20 ou mais), porque um trecho curto pode deixar alguma classe sem ponto
+- `fill_stream_reaches_the_fill_during_a_glide_back`: o ponto mais à direita pode ficar até 6 px antes da borda antiga, porque os pontos são espalhados e a última coluna pode não ter nenhum
+- `done_bar_streams_at_half_speed`, depois do Verifier: passou a fixar a volta da onda em andamento em 11,65 s, a da 1.3.0, e não só a razão de 2 entre parada e em andamento
 - `more_agents_line_fits_a_narrow_strip`: usava um título longo ao lado da barra para estreitar a linha de agentes a 120 px; sem a coluna do título, a linha mais estreita é a do VS Code com 30 colunas (120 px, a mesma largura), e o desktop com 40 colunas fica no lugar das 60
 
 ## Swept

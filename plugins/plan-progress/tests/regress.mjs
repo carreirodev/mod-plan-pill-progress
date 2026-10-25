@@ -522,7 +522,8 @@ const C = {
       const src = (await E.view('t')).track
       rest.push([state, loop(src), flickers(src)])
     }
-    const ok = running > 0 && flickers(first) && rest.every(([, s, f]) => Math.abs(s - running * 2) < 0.02 && f)
+    // a running bar's loop is 1.3.0's (233 columns at 20 a second, 11.65 s), a bar at rest takes twice as long
+    const ok = Math.abs(running - 11.65) < 0.01 && flickers(first) && rest.every(([, s, f]) => Math.abs(s - running * 2) < 0.02 && f)
     return [`running ${running}s a loop, flickers ${flickers(first)}; ${rest.map(([st, s, f]) => `${st} ${s}s, flickers ${f}`).join('; ')}`, ok]
   },
   async wave_goes_on_when_the_bar_comes_to_rest(E) {
@@ -5762,24 +5763,30 @@ const C = {
       if (n.type === 'Box' && n.props.width === 5) return walkAll(n).some(c => c.type === 'Button' && /^fold-/.test(c.props.key ?? '')) ? 'fold' : 'fold cell'
       return n.type
     }
-    const rows = async F =>
-      walkAll(await F.band())
+    const rows = async (F, surface) =>
+      walkAll(await F.band(surface))
         .filter(n => n.type === 'Box' && /^bar-/.test(n.props.key ?? ''))
         .map(r => ({ key: r.props.key, kinds: (r.children ?? []).flat(Infinity).filter(c => c && typeof c === 'object').map(kindOf), texts: walkAll(r).filter(c => c.type === 'Text').map(c => (c.children ?? []).flat(Infinity).join('')) }))
-    const F = await boot(file)
-    await create(F, 'a', three(), 'Docs review')
-    const plain = await rows(F)
-    await create(F, 'b', three(), 'Refactor payments')
-    await F.spawn('ag1', 'Scan routes')
-    const folded = await rows(F)
-    const same = (r, want) => r?.kinds.join() === want.join()
-    const titled = [...plain, ...folded].some(r => r.texts.some(t => t.includes('Docs review') || t.includes('Refactor payments')))
-    const ok =
-      same(plain[0], ['mark', 'bar', 'percent', 'close']) &&
-      same(folded.find(r => r.key === 'bar-a'), ['mark', 'bar', 'percent', 'fold cell', 'close']) &&
-      same(folded.find(r => r.key === 'bar-b'), ['mark', 'bar', 'percent', 'fold', 'close']) &&
-      !titled
-    return [`alone: ${plain[0]?.kinds.join(' ')}; with agents: ${folded.map(r => `${r.key} ${r.kinds.join(' ')}`).join('; ')}; a Text with the title ${titled}`, ok]
+    const seen = []
+    let ok = true
+    // the same row on the desktop and in VS Code
+    for (const surface of ['desktop', 'vscode']) {
+      const F = await boot(file)
+      await create(F, 'a', three(), 'Docs review')
+      const plain = await rows(F, surface)
+      await create(F, 'b', three(), 'Refactor payments')
+      await F.spawn('ag1', 'Scan routes')
+      const folded = await rows(F, surface)
+      const same = (r, want) => r?.kinds.join() === want.join()
+      const titled = [...plain, ...folded].some(r => r.texts.some(t => t.includes('Docs review') || t.includes('Refactor payments')))
+      ok &&=
+        same(plain[0], ['mark', 'bar', 'percent', 'close']) &&
+        same(folded.find(r => r.key === 'bar-a'), ['mark', 'bar', 'percent', 'fold cell', 'close']) &&
+        same(folded.find(r => r.key === 'bar-b'), ['mark', 'bar', 'percent', 'fold', 'close']) &&
+        !titled
+      seen.push(`${surface} alone: ${plain[0]?.kinds.join(' ')}; with agents: ${folded.map(r => `${r.key} ${r.kinds.join(' ')}`).join('; ')}; a Text with the title ${titled}`)
+    }
+    return [seen.join(' | '), ok]
   },
   async title_zone_fits_the_longest_title() {
     // C2: the title is drawn in the picture, 12 px in. Its zone is as wide in every bar shown, the width the longest
@@ -5949,6 +5956,17 @@ const C = {
       const dot = /<circle cx="0" cy="11" r="11"[^>]*\/><text[^>]*>1<\/text>/.test(track.source)
       seen.push(`${cols} columns: ${run} px of progress, name ${named}, round dot ${dot}`)
       ok &&= run >= 160 ? named && !dot : dot && !named
+    }
+    // the same rule in VS Code: a 70-column panel leaves the pill its name, a 40-column one the round dot
+    for (const cols of [70, 40]) {
+      const F = await boot(file)
+      await F.call({ id: 't', title: long, stages: [S('Build', st('A', 'active'), 'B'), S('Ship', 'C')] })
+      const track = trackOf(await atCols(F, cols, 'vscode'), long)
+      const run = track.width - fillOf(track.source)
+      const named = /<rect x="-[\d.]+" y="0" width="[\d.]+" height="22" rx="11"[^>]*\/>.*?>Build</.test(track.source)
+      const dot = /<circle cx="0" cy="11" r="11"[^>]*\/><text[^>]*>1<\/text>/.test(track.source)
+      seen.push(`VS Code ${cols} columns: ${run} px of progress, name ${named}, round dot ${dot}`)
+      ok &&= cols === 70 ? run >= 160 && named && !dot : run < 160 && dot && !named
     }
     return [seen.join('; '), ok && /: 160 px/.test(seen[0]) && /: 15\d px/.test(seen[1])]
   },
