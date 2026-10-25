@@ -120,7 +120,8 @@ export async function boot(file, kept = new Map()) {
         this.setRoot = path
       },
     },
-    // globalThis.ENV plays the variables $.env.get reads, globalThis.FILES the files $.fs.read finds (by path)
+    // globalThis.ENV plays the variables $.env.get reads, globalThis.FILES the files $.fs.read finds (by path); a write
+    // lands in FILES, so a case reads back what the mod wrote
     env: { get: async name => globalThis.ENV?.[name] },
     fs: {
       read: async path => {
@@ -128,6 +129,8 @@ export async function boot(file, kept = new Map()) {
         if (text === undefined) throw Object.assign(new Error(`ENOENT: no such file, open '${path}'`), { code: 'ENOENT' })
         return text
       },
+      exists: async path => globalThis.FILES?.[path] !== undefined,
+      write: async (path, text) => void (globalThis.FILES = { ...(globalThis.FILES ?? {}), [path]: text }),
     },
     // globalThis.NO_TOOL plays an engine whose loopback link to the mod's tools failed: the tool is registered
     // but never reaches the session's list

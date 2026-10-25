@@ -45,6 +45,24 @@ const latestTrack = async E => {
 }
 const OMARCHY_LIGHT = 'mode = "light"\naccent = "#3264eb"\nbackground = "#fafafa"\nforeground = "#212121"\n'
 const OMARCHY_DARK = 'accent = "#e75a50"\nforeground = "#efebdc"\nbackground = "#1B1B1B"\n'
+// the hideAgentRows cases (WPC-242) play a machine whose Claude Code folder is /cfg, booted with the options given
+const SETTINGS = '/cfg/settings.json'
+const ROWS = '/cfg/plan-progress/agent-rows.jsonl'
+const COMMAND = 'cat "/cfg/plan-progress/agent-rows.jsonl"'
+async function withRows(options, files, run, env = { CLAUDE_CONFIG_DIR: '/cfg' }) {
+  const held = ['OPTIONS', 'ENV', 'FILES'].map(k => [k, globalThis[k]])
+  globalThis.OPTIONS = options
+  globalThis.ENV = env
+  globalThis.FILES = { ...files }
+  try {
+    return await run(await boot(file))
+  } finally {
+    for (const [k, v] of held) if (v === undefined) delete globalThis[k]
+    else globalThis[k] = v
+  }
+}
+const rowsIn = () => (globalThis.FILES[ROWS] ?? '').split('\n').filter(Boolean).map(line => JSON.parse(line).id)
+const settingsOf = () => JSON.parse(globalThis.FILES[SETTINGS] ?? '{}')
 // the tint tests play a machine through globals; each run starts from a light Mac and cleans up after itself
 async function withMachine(set, run) {
   for (const k of MACHINE) delete globalThis[k]
@@ -5550,6 +5568,131 @@ const C = {
     const still = !(then.strips[0]?.includes(' mo ') ?? true)
     const glidesOn = then.track.includes('<animateTransform')
     return [`morph ${morphing}, glide ${gliding}, drawn again by the morph's end (210 ms) ${redrawn}, strip standing then ${still}, glide still on ${glidesOn}`, morphing && gliding && redrawn && still && glidesOn]
+  },
+  async agent_rows_off_leaves_settings(E) {
+    // the hideAgentRows option is off unless set (WPC-242): settings.json is not touched and no rows file is written
+    void E
+    return withRows({}, { [SETTINGS]: '{"theme":"dark"}\n' }, async F => {
+      await create(F)
+      await F.spawn('ag1', 'Scan tests')
+      await F.everyTick()
+      const text = globalThis.FILES[SETTINGS]
+      return [`settings ${text.trim()}, rows file ${ROWS in globalThis.FILES}`, text === '{"theme":"dark"}\n' && !(ROWS in globalThis.FILES)]
+    })
+  },
+  async agent_rows_hide_what_the_strips_show(E) {
+    // on: settings.json gains the command that prints the rows file, its other keys kept, and the file lists the agents
+    // the strips show; with the bars hidden (/progress) or the strips folded (/progress-agents) it lists none
+    void E
+    return withRows({ hideAgentRows: true }, { [SETTINGS]: '{"theme":"dark"}' }, async F => {
+      const s = settingsOf()
+      const isSet = s.theme === 'dark' && s.subagentStatusLine?.type === 'command' && s.subagentStatusLine?.command === COMMAND
+      await create(F)
+      await F.spawn('ag1', 'Scan tests')
+      await F.spawn('ag2', 'Read docs')
+      await F.everyTick()
+      const shown = rowsIn().join()
+      await F.command('progress')
+      await F.everyTick()
+      const hidden = rowsIn().join()
+      await F.command('progress')
+      await F.everyTick()
+      const back = rowsIn().join()
+      await F.command('progress-agents')
+      await F.everyTick()
+      const folded = rowsIn().join()
+      return [`set ${isSet}; shown ${shown}; bars hidden [${hidden}]; shown again ${back}; strips folded [${folded}]`, isSet && shown === 'ag1,ag2' && hidden === '' && back === 'ag1,ag2' && folded === '']
+    })
+  },
+  async agent_rows_only_drawn_strips(E) {
+    // a big batch draws the first strips and folds the rest into "+n more": only the drawn ones leave Claude Code's list
+    void E
+    return withRows({ hideAgentRows: true }, {}, async F => {
+      await create(F)
+      for (let i = 1; i <= 7; i++) await F.spawn(`ag${i}`, `Agent ${i}`)
+      await F.everyTick()
+      const rows = rowsIn()
+      const drawn = (await F.view('t')).strips.length
+      return [`7 agents, ${drawn} strips drawn, rows ${rows.join()}`, rows.length === 4 && rows.every(id => /^ag[1-7]$/.test(id))]
+    })
+  },
+  async agent_rows_keep_other_sessions(E) {
+    // the file is shared: another session's lines stay, and this session's leave it when the session ends
+    void E
+    return withRows({ hideAgentRows: true }, { [ROWS]: '{"id":"other1","content":""}\n' }, async F => {
+      await create(F)
+      await F.spawn('ag1', 'Scan tests')
+      await F.everyTick()
+      const during = rowsIn().join()
+      await F.sessionEnd('clear')
+      const after = rowsIn().join()
+      return [`during ${during}; after the end ${after}`, during === 'other1,ag1' && after === 'other1']
+    })
+  },
+  async agent_rows_leave_the_persons_own(E) {
+    // a subagentStatusLine the person set stays as it is: the mod says so once and writes no rows
+    void E
+    const own = '{"subagentStatusLine":{"type":"command","command":"~/my-rows.sh"}}'
+    return withRows({ hideAgentRows: true }, { [SETTINGS]: own }, async F => {
+      await create(F)
+      await F.spawn('ag1', 'Scan tests')
+      await F.everyTick()
+      const said = F.notices.filter(n => n.via === 'toast' && n.text.includes('subagentStatusLine')).length
+      return [`settings kept ${globalThis.FILES[SETTINGS] === own}, said ${said}x, rows file ${ROWS in globalThis.FILES}`, globalThis.FILES[SETTINGS] === own && said === 1 && !(ROWS in globalThis.FILES)]
+    })
+  },
+  async agent_rows_off_takes_its_line_out(E) {
+    // turned off, the mod's own line leaves settings.json; the rest stays
+    void E
+    return withRows({}, { [SETTINGS]: JSON.stringify({ theme: 'dark', subagentStatusLine: { type: 'command', command: COMMAND } }) }, async F => {
+      void F
+      const s = settingsOf()
+      return [`settings ${JSON.stringify(s)}`, s.theme === 'dark' && !('subagentStatusLine' in s)]
+    })
+  },
+  async agent_rows_broken_settings_left(E) {
+    // a settings.json that does not parse is left as it is (Claude Code reports it); the session starts all the same
+    void E
+    return withRows({ hideAgentRows: true }, { [SETTINGS]: '{not json' }, async F => {
+      const logged = F.notices.some(n => n.via === 'log' && n.text.includes('subagentStatusLine not set'))
+      return [`kept ${globalThis.FILES[SETTINGS] === '{not json'}, logged ${logged}, tool ${Boolean(F.toolSpec)}`, globalThis.FILES[SETTINGS] === '{not json' && logged && Boolean(F.toolSpec)]
+    })
+  },
+  async agent_rows_failed_write_keeps_the_timer(E) {
+    // a rows file the disk refuses is logged once; the 1 s timer still folds the finished strips away
+    void E
+    return withRows({ hideAgentRows: true }, {}, async F => {
+      await create(F)
+      await F.spawn('ag1', 'Scan tests')
+      await F.turnComplete('ag1')
+      const write = F.$.fs.write
+      F.$.fs.write = async (path, text) => {
+        if (path === ROWS) throw new Error('ENOSPC: no space left on device')
+        return write(path, text)
+      }
+      try {
+        for (let i = 0; i < 8; i++) {
+          F.tick(1000)
+          await F.everyTick()
+        }
+      } finally {
+        F.$.fs.write = write
+      }
+      const logged = F.notices.filter(n => n.via === 'log' && n.text.includes('agent rows not written')).length
+      const folded = (await F.view('t')).strips.length === 0
+      return [`logged ${logged}x, strips folded ${folded}`, logged === 1 && folded]
+    })
+  },
+  async agent_rows_windows_paths(E) {
+    // on Windows with no settings.json yet: the file is made, and the command names the path with forward slashes,
+    // which Git Bash and PowerShell both read
+    void E
+    return withRows({ hideAgentRows: true }, {}, async F => {
+      void F
+      const s = JSON.parse(globalThis.FILES['C:\\Users\\x/.claude/settings.json'] ?? '{}')
+      const command = s.subagentStatusLine?.command
+      return [`command ${command}, rows file ${'C:\\Users\\x/.claude/plan-progress/agent-rows.jsonl' in globalThis.FILES}`, command === 'cat "C:/Users/x/.claude/plan-progress/agent-rows.jsonl"' && 'C:\\Users\\x/.claude/plan-progress/agent-rows.jsonl' in globalThis.FILES]
+    }, { USERPROFILE: 'C:\\Users\\x' })
   },
   async dollar_goes_only_to_top_level_functions(E) {
     // the engine scans a module before it loads it and refuses one that hands a hook's $ to anything but a function

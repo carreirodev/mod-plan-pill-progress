@@ -2068,6 +2068,86 @@ const foldAt = new Map<string, number>()
 // bar id -> the subagent that made it, for a bar handed to the main loop when that subagent's run ended
 const handedOver = new Map<string, string>()
 
+// Claude Code's own agent list under the prompt repeats the strips. With the hideAgentRows option on, the person's
+// settings.json gets a subagentStatusLine that prints ROWS_FILE, and the mod keeps a hide line in it for each agent its
+// strips show, so Claude Code leaves those rows out (WPC-242). A plugin cannot ship that setting itself: Claude Code ran
+// neither the command of a plugin's settings.json nor one a settings.read hook added
+let isHidingRows = false
+const ROWS_FILE = 'plan-progress/agent-rows.jsonl'
+// every session writes the one file: each keeps the others' lines, and the whole is capped, oldest first
+const ROWS_CAP = 200
+const ROW_ID = /"id":"([^"]+)"/
+// the agents this session last put in the file, and that list as text, so an unchanged set writes nothing
+let rowsMine = new Set<string>()
+let rowsSent: string | null = null
+// a subagentStatusLine the person set is theirs: the mod says so once and hides nothing
+let isRowsTheirs = false
+
+// the folder Claude Code keeps its settings and plugins in
+async function configDir($: EngineInterface) {
+  const home = (await $.env.get('USERPROFILE')) || (await $.env.get('HOME')) || ''
+  return (await $.env.get('CLAUDE_CONFIG_DIR')) || `${home}/.claude`
+}
+
+// Claude Code runs it through Git Bash, else PowerShell (sh off Windows): cat reads a quoted path in all three, and
+// Git Bash would drop a backslash, so the path goes with forward slashes
+const rowsCommand = (dir: string) => `cat "${dir.replaceAll('\\', '/')}/${ROWS_FILE}"`
+
+// the option on, settings.json gets the setting unless it holds one already; off, the mod's own comes back out. Any
+// other value of the key is the person's and stays as it is
+async function settleRowsSetting($: EngineInterface) {
+  const dir = await configDir($)
+  const path = `${dir}/settings.json`
+  const text = (await $.fs.exists(path)) ? await $.fs.read(path) : ''
+  const settings = (text.trim() ? JSON.parse(text) : {}) as Record<string, unknown>
+  const command = rowsCommand(dir)
+  const held = settings.subagentStatusLine
+  const isMine = typeof held === 'object' && held !== null && (held as { command?: unknown }).command === command
+  if (!isHidingRows) {
+    if (!isMine) return
+    const rest = Object.fromEntries(Object.entries(settings).filter(([key]) => key !== 'subagentStatusLine'))
+    await $.fs.write(path, `${JSON.stringify(rest, null, 2)}\n`)
+    return
+  }
+  if (held !== undefined && !isMine) {
+    isRowsTheirs = true
+    $.ui.toast(`plan-progress: ${path} already sets subagentStatusLine, so Claude Code's agent rows stay. Remove it to let the mod hide the rows its bars show.`, { timeoutMs: 15000 })
+    return
+  }
+  // the file is there before Claude Code first runs the command
+  if (!(await $.fs.exists(`${dir}/${ROWS_FILE}`))) await $.fs.write(`${dir}/${ROWS_FILE}`, '')
+  if (!isMine) await $.fs.write(path, `${JSON.stringify({ ...settings, subagentStatusLine: { type: 'command', command } }, null, 2)}\n`)
+}
+
+// the agents whose strips are drawn now: none while the bars are hidden or a bar's strips are folded away
+const rowIds = (list: readonly Plan[], now: number, isShown: boolean) =>
+  isShown ? list.flatMap(p => shownAgents(p, now, stripBudget(list.length))?.shown ?? []).map(a => a.id) : []
+
+// writes this session's hide lines, keeping those of the other sessions. It runs on the 1 s timer, which also folds
+// finished strips: a failed write is logged once and tried again next second, never thrown into the timer
+let hasLoggedRows = false
+async function syncRows($: EngineInterface, ids: readonly string[]) {
+  if (!isHidingRows || isRowsTheirs) return
+  const key = ids.join('\n')
+  if (key === rowsSent) return
+  try {
+    const path = `${await configDir($)}/${ROWS_FILE}`
+    const prev = (await $.fs.exists(path)) ? await $.fs.read(path) : ''
+    const kept = prev.split('\n').filter(line => {
+      const id = ROW_ID.exec(line)?.[1]
+      return id !== undefined && !rowsMine.has(id) && !ids.includes(id)
+    })
+    const lines = [...kept, ...ids.map(id => JSON.stringify({ id, content: '' }))].slice(-ROWS_CAP)
+    await $.fs.write(path, lines.map(line => `${line}\n`).join(''))
+    rowsMine = new Set(ids)
+    rowsSent = key
+  } catch (err) {
+    if (hasLoggedRows) return
+    hasLoggedRows = true
+    $.ui.log(`plan-progress: agent rows not written: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 // the mod's own bar mirrors its agents as steps, finished first, so percent and count read done/total
 function syncAuto(p: Plan, now: number): Plan {
   const agents = p.agents ?? []
@@ -2668,8 +2748,7 @@ async function readInstall($: EngineInterface): Promise<Install> {
   const manifest = await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`).catch(() => '{}')
   const version = String((JSON.parse(manifest) as { version?: unknown }).version ?? '')
   try {
-    const home = (await $.env.get('USERPROFILE')) || (await $.env.get('HOME')) || ''
-    const dir = (await $.env.get('CLAUDE_CONFIG_DIR')) || `${home}/.claude`
+    const dir = await configDir($)
     const list = JSON.parse(await $.fs.read(`${dir}/plugins/installed_plugins.json`)) as { plugins?: Record<string, { installPath?: string }[]> }
     for (const [id, rows] of Object.entries(list.plugins ?? {}))
       for (const row of rows)
@@ -3001,6 +3080,7 @@ export const register: Register = (on, options) => {
   const seconds = Number(options?.doneBarSeconds ?? 30)
   doneStaysMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 30_000
   isTwinkling = options?.twinkle !== false
+  isHidingRows = options?.hideAgentRows === true
 
   // per-turn bookkeeping; module variables are fine here, a reload just starts a fresh count
   let workCalls = 0
@@ -3213,6 +3293,9 @@ export const register: Register = (on, options) => {
     themeSetting = String(theme?.value ?? 'dark')
     if (await readWords($, rows)) await holdChoices($)
     isLight = tintIsLight()
+    // a settings.json that does not parse, or a read or write that fails, leaves the file as it is and is logged; Claude
+    // Code itself reports a broken settings.json to the person
+    await settleRowsSetting($).catch((err: unknown) => $.ui.log(`plan-progress: subagentStatusLine not set: ${err instanceof Error ? err.message : String(err)}`))
     await settleVersion($)
     // the update check waits a little after the start, out of the session's way
     $.clock.after(15_000, () => void autoCheck($))
@@ -3230,6 +3313,7 @@ export const register: Register = (on, options) => {
       await syncTint($, now)
       // from the latest list: the one read above may predate a bar dropped just now
       await saveNow($)
+      await syncRows($, rowIds(await read($, plans), now, await read($, isOpen)))
       // clocks count inside the frame, so the only timed redraw is folding finished strips away
       const due = [...foldAt].filter(([, at]) => now >= at)
       if (due.length === 0) return
@@ -3254,6 +3338,8 @@ export const register: Register = (on, options) => {
         const text = JSON.stringify(list)
         if (text !== lastSaved) await savePlans($, list, text, true)
       }
+      // this session's hide lines leave the file the other sessions share
+      await syncRows($, [])
     } finally {
       // even when the bound cut the save short: the timer must keep off the wiped state, and the host wipes the
       // footer's figure with it, so the next one is written again even if it reads the same

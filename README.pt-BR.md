@@ -13,6 +13,7 @@ Baseado no plan-progress de Kirill Serditov, sob a licença MIT.
 - Os pontos do preenchimento e das linhas de subagentes cintilam; desative `twinkle` em `/config` para desenhá-los parados
 - Quatro estados: em andamento, aguardando resposta, erro, concluído
 - Cada subagente tem uma linha sob sua tarefa: seu número, nome, modelo e effort, ferramenta atual, tempo; no terminal a marca dele gira enquanto roda e vira ✓ ou ✕ quando termina
+- No terminal, ligue `hideAgentRows` em `/config` e a lista de agentes do próprio Claude Code, embaixo do campo de entrada, deixa de mostrar os agentes que uma barra já mostra; os outros continuam lá, e a seta ↓ ainda chega a todos. Para isso o mod acrescenta uma linha `subagentStatusLine` ao `settings.json` do Claude Code e a tira de novo quando a opção é desligada. Se você mesmo já definiu `subagentStatusLine`, o mod deixa como está e não esconde nada
 - O plano pode mudar durante o trabalho; os passos concluídos são mantidos pelo título
 - As barras são salvas por sessão e voltam quando a sessão é retomada
 - Sons curtos para pergunta, erro e conclusão

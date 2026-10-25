@@ -13,6 +13,7 @@ Based on plan-progress by Kirill Serditov, under the MIT license.
 - The dots of the fill and of the subagent rows twinkle; turn `twinkle` off in `/config` to draw them still
 - Four states: running, needs input, error, done
 - Each subagent gets a row under its task: its number, name, model and effort, current tool, time; in the terminal its mark spins while it runs and turns into ✓ or ✕ when it ends
+- In the terminal, turn `hideAgentRows` on in `/config` and Claude Code's own agent list under the prompt leaves out the agents a bar already shows; the others stay, and ↓ still reaches them all. To do this the mod adds a `subagentStatusLine` line to your Claude Code `settings.json`, and takes it out again when the option is turned off. If you already set `subagentStatusLine` yourself, the mod leaves it and hides nothing
 - The plan can change mid-run; finished steps are kept by title
 - Bars are saved per session and come back when the session is resumed
 - Short sounds for a question, an error and completion
